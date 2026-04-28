@@ -16,7 +16,10 @@ class ProviderType(str, Enum):
 class EmailCategory(str, Enum):
     NEWSLETTER = "newsletter"
     TRANSACTIONAL = "transactional"
+    SOCIAL = "social"
+    FINANCE = "finance"
     PERSONAL = "personal"
+    SUSPICIOUS = "suspicious"  # spam probabile: dominio gratuito con nome aziendale
 
 
 class ActionType(str, Enum):

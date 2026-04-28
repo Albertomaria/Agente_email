@@ -183,7 +183,7 @@ class GmailProvider(EmailProvider):
         """
         results = {}
         batch_size = config.GMAIL_BATCH_SIZE
-        max_retries = 3
+        max_retries = 5
 
         def _callback(request_id, response, exception):
             if exception:
@@ -229,8 +229,8 @@ class GmailProvider(EmailProvider):
             else:
                 logger.error("Batch %d/%d failed after %d attempts, skipping.", i, total, max_retries)
 
-            # Piccola pausa tra batch per rispettare i rate limit Gmail (250 QPS)
-            time.sleep(0.1)
+            # Pausa tra batch per rispettare i rate limit Gmail
+            time.sleep(0.3)
             logger.debug("Batch %d/%d processed (%d results so far)", i + batch_size, total, len(results))
 
         logger.info("Metadata fetch complete: %d/%d messages processed", len(results), total)

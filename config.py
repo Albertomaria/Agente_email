@@ -49,7 +49,7 @@ MICROSOFT_GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 # Max emails to process per sender during analysis (0 = unlimited)
 MAX_EMAILS_PER_SENDER = 0
 # Batch size for API calls
-GMAIL_BATCH_SIZE = 100
+GMAIL_BATCH_SIZE = 50
 MICROSOFT_BATCH_SIZE = 20   # Graph API batch limit
 IMAP_BATCH_SIZE = 200
 

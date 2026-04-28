@@ -5,49 +5,64 @@
 <div class="page-header">
   <div>
     <h1>{{ icon }} {{ account.display_name }}</h1>
-    <p class="subhead">{{ meta.total_senders }} senders · {{ meta.total_emails | default(0) }} emails</p>
+    <p class="subhead">{{ meta.total_senders }} mittenti · {{ meta.total_emails | default(0) }} email</p>
   </div>
   <div class="header-actions">
-    <a class="btn btn-outline" href="/analyze/{{ account.id }}/page">↻ Re-analyze</a>
-    <a class="btn btn-primary btn-lg" href="/execute/{{ account.id }}/page"
-       id="executeBtn">⚡ Execute Actions</a>
+    <a class="btn btn-outline" href="/analyze/{{ account.id }}/page">↻ Re-analizza</a>
+    <a class="btn btn-primary btn-lg" href="/execute/{{ account.id }}/page">⚡ Esegui azioni</a>
   </div>
 </div>
 
-<!-- Bulk actions toolbar -->
+<!-- Category filter tabs -->
+<div class="cat-tabs">
+  <button class="cat-tab active" data-cat="all" onclick="filterCat(this)">
+    Tutti <span class="cat-count" id="cnt-all"></span>
+  </button>
+  <button class="cat-tab" data-cat="newsletter" onclick="filterCat(this)">
+    📰 Newsletter <span class="cat-count" id="cnt-newsletter"></span>
+  </button>
+  <button class="cat-tab" data-cat="transactional" onclick="filterCat(this)">
+    📦 Transazionale <span class="cat-count" id="cnt-transactional"></span>
+  </button>
+  <button class="cat-tab" data-cat="social" onclick="filterCat(this)">
+    👥 Social <span class="cat-count" id="cnt-social"></span>
+  </button>
+  <button class="cat-tab" data-cat="finance" onclick="filterCat(this)">
+    💳 Finance <span class="cat-count" id="cnt-finance"></span>
+  </button>
+  <button class="cat-tab" data-cat="personal" onclick="filterCat(this)">
+    👤 Personale <span class="cat-count" id="cnt-personal"></span>
+  </button>
+  <button class="cat-tab" data-cat="suspicious" onclick="filterCat(this)">
+    ⚠️ Sospetto <span class="cat-count" id="cnt-suspicious"></span>
+  </button>
+</div>
+
+<!-- Toolbar -->
 <div class="toolbar">
   <div class="toolbar-left">
-    <span class="toolbar-label">Sort by:</span>
-    <a class="sort-link {% if current_sort == 'total_count' %}active{% endif %}"
-       href="?sort=total_count">Volume</a>
-    <a class="sort-link {% if current_sort == 'unread' %}active{% endif %}"
-       href="?sort=unread">Unread</a>
-    <a class="sort-link {% if current_sort == 'category' %}active{% endif %}"
-       href="?sort=category">Category</a>
-    <a class="sort-link {% if current_sort == 'name' %}active{% endif %}"
-       href="?sort=name">Name</a>
+    <span class="toolbar-label">Ordina:</span>
+    <a class="sort-link {% if current_sort == 'total_count' %}active{% endif %}" href="?sort=total_count">Volume</a>
+    <a class="sort-link {% if current_sort == 'unread' %}active{% endif %}" href="?sort=unread">Non lette</a>
+    <a class="sort-link {% if current_sort == 'unread_pct' %}active{% endif %}" href="?sort=unread_pct">% Non lette</a>
+    <a class="sort-link {% if current_sort == 'category' %}active{% endif %}" href="?sort=category">Categoria</a>
+    <a class="sort-link {% if current_sort == 'name' %}active{% endif %}" href="?sort=name">Nome</a>
   </div>
   <div class="toolbar-right">
-    <button class="btn btn-sm btn-outline" onclick="bulkAction('newsletter','delete')">
-      🗑 Delete all newsletters
-    </button>
-    <button class="btn btn-sm btn-outline" onclick="bulkAction('newsletter','unsubscribe_delete')">
-      🚫 Unsub+Delete newsletters
-    </button>
-    <button class="btn btn-sm btn-danger" onclick="bulkAction('all','delete')">
-      🗑 Delete ALL marked
-    </button>
+    <button class="btn btn-sm btn-outline" onclick="bulkVisibleAction('delete')">🗑 Elimina visibili</button>
+    <button class="btn btn-sm btn-outline" onclick="bulkVisibleAction('unsubscribe_delete')">🚫 Unsub+Elimina visibili</button>
   </div>
 </div>
 
-<!-- Filter bar -->
+<!-- Search -->
 <div class="filter-bar">
-  <input type="text" id="filterInput" placeholder="Filter by name or email…"
-         oninput="filterSenders(this.value)" />
+  <input type="text" id="filterInput" placeholder="Cerca mittente…" oninput="filterText(this.value)" />
   <div class="legend">
     <span class="badge badge-newsletter">Newsletter</span>
-    <span class="badge badge-transactional">Transactional</span>
-    <span class="badge badge-personal">Personal</span>
+    <span class="badge badge-transactional">Transazionale</span>
+    <span class="badge badge-social">Social</span>
+    <span class="badge badge-finance">Finance</span>
+    <span class="badge badge-personal">Personale</span>
   </div>
 </div>
 
@@ -56,20 +71,23 @@
   <table class="sender-table" id="senderTable">
     <thead>
       <tr>
-        <th>Sender</th>
-        <th class="col-count">Total</th>
-        <th class="col-count">Unread</th>
-        <th class="col-cat">Category</th>
+        <th>Mittente</th>
+        <th class="col-count">Tot.</th>
+        <th class="col-count">Non lette</th>
+        <th class="col-pct">% NL</th>
+        <th class="col-cat">Categoria</th>
         <th class="col-unsub">Unsub</th>
-        <th class="col-actions">Actions</th>
+        <th class="col-actions">Azioni</th>
       </tr>
     </thead>
     <tbody>
       {% for s in senders %}
       {% set current_action = actions_map.get(s.email, 'keep') %}
+      {% set unread_pct = ((s.unread_count / s.total_count) * 100) | round(0) | int if s.total_count > 0 else 0 %}
       <tr class="sender-row row-{{ current_action }}"
           data-email="{{ s.email }}"
           data-category="{{ s.category.value }}"
+          data-name="{{ s.name | lower }}"
           id="row-{{ loop.index }}">
         <td class="col-sender">
           <div class="sender-name">{{ s.name or s.email }}</div>
@@ -79,36 +97,32 @@
           {% endif %}
         </td>
         <td class="col-count">{{ s.total_count }}</td>
-        <td class="col-count {% if s.unread_count > 0 %}unread-count{% endif %}">
-          {{ s.unread_count }}
+        <td class="col-count {% if s.unread_count > 0 %}unread-count{% endif %}">{{ s.unread_count }}</td>
+        <td class="col-pct">
+          <div class="pct-bar-wrap" title="{{ unread_pct }}% non lette">
+            <div class="pct-bar {% if unread_pct > 80 %}pct-high{% elif unread_pct > 40 %}pct-mid{% else %}pct-low{% endif %}"
+                 style="width: {{ unread_pct }}%"></div>
+            <span class="pct-label">{{ unread_pct }}%</span>
+          </div>
         </td>
         <td class="col-cat">
           <span class="badge badge-{{ s.category.value }}">{{ s.category.value }}</span>
         </td>
         <td class="col-unsub">
-          {% if s.has_unsubscribe %}
-          <span title="{{ s.unsubscribe_url or s.unsubscribe_mailto }}">✓</span>
-          {% endif %}
+          {% if s.has_unsubscribe %}<span title="{{ s.unsubscribe_url or s.unsubscribe_mailto }}">✓</span>{% endif %}
         </td>
         <td class="col-actions">
-          <div class="action-buttons" data-email="{{ s.email }}">
-            <button class="btn-action btn-preview"
-                    onclick="showPreview('{{ s.email }}', '{{ s.name | replace("'", "\\'") }}', this)">
-              👁
-            </button>
+          <div class="action-buttons">
+            <button class="btn-action btn-preview" title="Anteprima email"
+                    onclick="showPreview('{{ s.email }}', '{{ s.name | replace("'", "\\'") }}', this)">👁</button>
             <button class="btn-action btn-keep {% if current_action == 'keep' %}active{% endif %}"
-                    onclick="setAction('{{ s.email }}', 'keep', this)">
-              ✓ Keep
-            </button>
+                    onclick="setAction('{{ s.email }}', 'keep', this)">✓ Tieni</button>
             <button class="btn-action btn-delete {% if current_action == 'delete' %}active{% endif %}"
-                    onclick="setAction('{{ s.email }}', 'delete', this)">
-              🗑 Delete
-            </button>
-            <button class="btn-action btn-unsub {% if current_action == 'unsubscribe_delete' %}active{% endif %} {% if not s.has_unsubscribe %}disabled{% endif %}"
+                    onclick="setAction('{{ s.email }}', 'delete', this)">🗑 Elimina</button>
+            <button class="btn-action btn-unsub {% if current_action == 'unsubscribe_delete' %}active{% endif %}{% if not s.has_unsubscribe or s.category.value == 'suspicious' %} disabled{% endif %}"
                     onclick="setAction('{{ s.email }}', 'unsubscribe_delete', this)"
-                    {% if not s.has_unsubscribe %}disabled title="No unsubscribe link found"{% endif %}>
-              🚫 Unsub+Del
-            </button>
+                    {% if not s.has_unsubscribe %}disabled title="Nessun link di disiscrizione"{% endif %}
+                    {% if s.category.value == 'suspicious' %}disabled title="⚠️ Mittente sospetto — non fare Unsub su possibile spam!"{% endif %}>🚫 Unsub+Del</button>
           </div>
         </td>
       </tr>
@@ -117,43 +131,64 @@
   </table>
 </div>
 
-<!-- Preview modal -->
-<div id="previewModal" class="modal-overlay hidden" onclick="closePreview(event)">
-  <div class="modal-box">
-    <div class="modal-header">
-      <div>
-        <div class="modal-title" id="previewTitle"></div>
-        <div class="modal-email" id="previewEmail"></div>
-      </div>
-      <button class="modal-close" onclick="closePreview()">✕</button>
-    </div>
-    <div id="previewBody" class="modal-body">
-      <div class="preview-loading">Caricamento…</div>
-    </div>
-  </div>
-</div>
-
 <!-- Sticky summary bar -->
 <div class="summary-bar" id="summaryBar">
-  <span id="summaryKeep">Keep: 0</span>
-  <span id="summaryDelete">Delete: 0</span>
+  <span id="summaryVisible">Visibili: 0</span>
+  <span id="summaryKeep">Tieni: 0</span>
+  <span id="summaryDelete">Elimina: 0</span>
   <span id="summaryUnsub">Unsub+Del: 0</span>
-  <a class="btn btn-primary" href="/execute/{{ account.id }}/page">⚡ Execute</a>
+  <a class="btn btn-primary" href="/execute/{{ account.id }}/page">⚡ Esegui</a>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
 const ACCOUNT_ID = "{{ account.id }}";
+let currentCat = 'all';
+let currentText = '';
 
+// ── Category counts ──────────────────────────────────────────────────────────
+function updateCatCounts() {
+  const rows = [...document.querySelectorAll('.sender-row')];
+  const counts = {all: rows.length, newsletter:0, transactional:0, social:0, finance:0, personal:0, suspicious:0};
+  rows.forEach(r => { if (counts[r.dataset.category] !== undefined) counts[r.dataset.category]++; });
+  Object.entries(counts).forEach(([cat, n]) => {
+    const el = document.getElementById('cnt-' + cat);
+    if (el) el.textContent = n;
+  });
+}
+
+// ── Filter by category tab ───────────────────────────────────────────────────
+function filterCat(btn) {
+  document.querySelectorAll('.cat-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentCat = btn.dataset.cat;
+  applyFilters();
+}
+
+// ── Filter by text ───────────────────────────────────────────────────────────
+function filterText(q) {
+  currentText = q.toLowerCase();
+  applyFilters();
+}
+
+function applyFilters() {
+  document.querySelectorAll('.sender-row').forEach(row => {
+    const catOk = currentCat === 'all' || row.dataset.category === currentCat;
+    const textOk = !currentText ||
+      row.dataset.email.includes(currentText) ||
+      row.dataset.name.includes(currentText);
+    row.style.display = (catOk && textOk) ? '' : 'none';
+  });
+  updateSummary();
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
 async function setAction(email, action, btn) {
   const row = btn.closest('tr');
-  // Optimistic UI update
-  row.querySelectorAll('.btn-action').forEach(b => b.classList.remove('active'));
+  row.querySelectorAll('.btn-action:not(.btn-preview)').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  row.className = row.className.replace(/row-\w+/, '') + ' row-' + action;
-
+  row.className = row.className.replace(/row-\S+/, '').trim() + ' row-' + action;
   await fetch(`/dashboard/${ACCOUNT_ID}/action`, {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -162,33 +197,21 @@ async function setAction(email, action, btn) {
   updateSummary();
 }
 
-async function bulkAction(category, action) {
-  const rows = [...document.querySelectorAll('.sender-row')];
-  const targets = category === 'all'
-    ? rows.filter(r => {
-        const act = r.querySelector('.btn-action.active');
-        return act && act.classList.contains('btn-delete') || act && act.classList.contains('btn-unsub');
-      })
-    : rows.filter(r => r.dataset.category === category);
+async function bulkVisibleAction(action) {
+  const rows = [...document.querySelectorAll('.sender-row')]
+    .filter(r => r.style.display !== 'none');
+  if (!rows.length) { alert('Nessun mittente visibile.'); return; }
+  if (!confirm(`Applica "${action}" a ${rows.length} mittenti visibili?`)) return;
 
-  const payload = targets.map(r => ({
-    sender_email: r.dataset.email,
-    action: action,
-  }));
-  if (!payload.length) { alert('No matching senders.'); return; }
-  if (!confirm(`Apply "${action}" to ${payload.length} senders?`)) return;
-
-  // Update UI
-  targets.forEach(r => {
-    r.className = r.className.replace(/row-\w+/, '') + ' row-' + action;
-    r.querySelectorAll('.btn-action').forEach(b => b.classList.remove('active'));
-    const cls = action === 'delete' ? '.btn-delete'
-              : action === 'unsubscribe_delete' ? '.btn-unsub'
-              : '.btn-keep';
-    const target = r.querySelector(cls);
-    if (target) target.classList.add('active');
+  rows.forEach(r => {
+    r.className = r.className.replace(/row-\S+/, '').trim() + ' row-' + action;
+    r.querySelectorAll('.btn-action:not(.btn-preview)').forEach(b => b.classList.remove('active'));
+    const cls = action === 'delete' ? '.btn-delete' : '.btn-unsub';
+    const t = r.querySelector(cls);
+    if (t && !t.disabled) t.classList.add('active');
   });
 
+  const payload = rows.map(r => ({ sender_email: r.dataset.email, action }));
   await fetch(`/dashboard/${ACCOUNT_ID}/actions`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -197,72 +220,105 @@ async function bulkAction(category, action) {
   updateSummary();
 }
 
-function filterSenders(q) {
-  q = q.toLowerCase();
-  document.querySelectorAll('.sender-row').forEach(row => {
-    const text = row.querySelector('.sender-name').textContent.toLowerCase()
-               + row.querySelector('.sender-addr').textContent.toLowerCase();
-    row.style.display = text.includes(q) ? '' : 'none';
-  });
-}
-
+// ── Summary bar ──────────────────────────────────────────────────────────────
 function updateSummary() {
-  let keep = 0, del = 0, unsub = 0;
+  let visible = 0, keep = 0, del = 0, unsub = 0;
   document.querySelectorAll('.sender-row').forEach(row => {
-    const active = row.querySelector('.btn-action.active');
+    if (row.style.display === 'none') return;
+    visible++;
+    const active = row.querySelector('.btn-action.active:not(.btn-preview)');
     if (!active) return;
-    if (active.classList.contains('btn-keep')) keep++;
+    if (active.classList.contains('btn-keep'))   keep++;
     else if (active.classList.contains('btn-delete')) del++;
-    else if (active.classList.contains('btn-unsub')) unsub++;
+    else if (active.classList.contains('btn-unsub'))  unsub++;
   });
-  document.getElementById('summaryKeep').textContent = `Keep: ${keep}`;
-  document.getElementById('summaryDelete').textContent = `Delete: ${del}`;
-  document.getElementById('summaryUnsub').textContent = `Unsub+Del: ${unsub}`;
+  document.getElementById('summaryVisible').textContent = `Visibili: ${visible}`;
+  document.getElementById('summaryKeep').textContent    = `Tieni: ${keep}`;
+  document.getElementById('summaryDelete').textContent  = `Elimina: ${del}`;
+  document.getElementById('summaryUnsub').textContent   = `Unsub+Del: ${unsub}`;
 }
 
-document.addEventListener('DOMContentLoaded', updateSummary);
+// ── Inline preview row ────────────────────────────────────────────────────────
+let openPreviewRow = null;
 
-// ── Preview modal ────────────────────────────────────────────────────────────
 async function showPreview(email, name, btn) {
-  const modal = document.getElementById('previewModal');
-  document.getElementById('previewTitle').textContent = name || email;
-  document.getElementById('previewEmail').textContent = email;
-  document.getElementById('previewBody').innerHTML = '<div class="preview-loading">Caricamento…</div>';
-  modal.classList.remove('hidden');
+  const senderRow = btn.closest('tr');
+  const colCount = senderRow.querySelectorAll('td').length;
 
+  // Se già aperta su questa riga, chiudi
+  if (openPreviewRow && openPreviewRow.dataset.forEmail === email) {
+    closePreview();
+    return;
+  }
+
+  // Chiudi eventuale preview precedente
+  closePreview();
+
+  // Segna il bottone come attivo
+  btn.classList.add('preview-open');
+
+  // Crea la riga di anteprima
+  const previewRow = document.createElement('tr');
+  previewRow.className = 'preview-inline-row';
+  previewRow.dataset.forEmail = email;
+  previewRow.innerHTML = `
+    <td colspan="${colCount}" class="preview-inline-cell">
+      <div class="preview-inline-header">
+        <span class="preview-inline-title">${escHtml(name || email)}</span>
+        <span class="preview-inline-addr">${escHtml(email)}</span>
+        <button class="preview-inline-close" onclick="closePreview()">✕ chiudi</button>
+      </div>
+      <div class="preview-inline-body">
+        <div class="preview-loading">Caricamento…</div>
+      </div>
+    </td>`;
+
+  senderRow.after(previewRow);
+  openPreviewRow = previewRow;
+
+  // Scroll morbido per tenere visibile la riga
+  senderRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  // Fetch
   try {
-    const resp = await fetch(`/api/preview/${ACCOUNT_ID}/${encodeURIComponent(email)}`);
+    const url = `/api/preview/${ACCOUNT_ID}?sender_email=${encodeURIComponent(email)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(resp.statusText);
     const previews = await resp.json();
+    const body = previewRow.querySelector('.preview-inline-body');
     if (!previews.length) {
-      document.getElementById('previewBody').innerHTML = '<p class="preview-empty">Nessuna email trovata.</p>';
+      body.innerHTML = '<p class="preview-empty">Nessuna email trovata.</p>';
       return;
     }
-    document.getElementById('previewBody').innerHTML = previews.map(p => `
-      <div class="preview-item">
-        <div class="preview-subject">${escHtml(p.subject)}</div>
-        <div class="preview-date">${escHtml(p.date)}</div>
-        ${p.snippet ? `<div class="preview-snippet">${escHtml(p.snippet)}</div>` : ''}
-      </div>
-    `).join('');
+    body.innerHTML = `<div class="preview-inline-list">${
+      previews.map(p => `
+        <div class="preview-item">
+          <div class="preview-subject">${escHtml(p.subject)}</div>
+          <div class="preview-date">${escHtml(p.date)}</div>
+          ${p.snippet ? `<div class="preview-snippet">${escHtml(p.snippet)}</div>` : ''}
+        </div>`).join('')
+    }</div>`;
   } catch(e) {
-    document.getElementById('previewBody').innerHTML = '<p class="preview-empty">Errore nel caricamento.</p>';
+    const body = previewRow.querySelector('.preview-inline-body');
+    body.innerHTML = `<p class="preview-empty">Errore: ${e.message}</p>`;
   }
 }
 
-function closePreview(event) {
-  if (!event || event.target === document.getElementById('previewModal')) {
-    document.getElementById('previewModal').classList.add('hidden');
+function closePreview() {
+  if (openPreviewRow) {
+    // Rimuovi classe attiva dal bottone 👁
+    const email = openPreviewRow.dataset.forEmail;
+    document.querySelectorAll('.btn-preview.preview-open').forEach(b => b.classList.remove('preview-open'));
+    openPreviewRow.remove();
+    openPreviewRow = null;
   }
 }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePreview(); });
 
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closePreview();
-});
-
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+document.addEventListener('DOMContentLoaded', () => { updateCatCounts(); updateSummary(); });
 </script>
 {% endblock %}

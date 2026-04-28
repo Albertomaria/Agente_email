@@ -191,6 +191,8 @@ async def dashboard(account_id: str, request: Request, sort: str = "total_count"
     # Sort
     if sort == "unread":
         senders.sort(key=lambda s: s.unread_count, reverse=True)
+    elif sort == "unread_pct":
+        senders.sort(key=lambda s: s.unread_count / s.total_count if s.total_count else 0, reverse=True)
     elif sort == "name":
         senders.sort(key=lambda s: s.name.lower())
     elif sort == "category":
@@ -305,7 +307,7 @@ async def api_senders(account_id: str):
     return JSONResponse([s.model_dump() for s in senders])
 
 
-@app.get("/api/preview/{account_id}/{sender_email:path}")
+@app.get("/api/preview/{account_id}")
 async def api_preview(account_id: str, sender_email: str):
     account = store.get_account(account_id)
     if not account:

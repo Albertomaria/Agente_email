@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Add Account — Email Cleaner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Add Email Account</h1>
+</div>
+
+<form class="form-card" method="post" action="/accounts/add" id="addForm">
+  <div class="form-group">
+    <label for="display_name">Display Name</label>
+    <input type="text" id="display_name" name="display_name"
+           placeholder="e.g. My Gmail" required />
+  </div>
+
+  <div class="form-group">
+    <label for="email">Email Address</label>
+    <input type="email" id="email" name="email"
+           placeholder="you@example.com" required />
+  </div>
+
+  <div class="form-group">
+    <label for="provider_type">Provider</label>
+    <select id="provider_type" name="provider_type" onchange="showProviderFields(this.value)">
+      <option value="gmail">Gmail (Google API)</option>
+      <option value="microsoft">Outlook / Hotmail / Office 365 (Microsoft Graph)</option>
+      <option value="imap">Other (IMAP)</option>
+    </select>
+  </div>
+
+  <!-- Gmail info box -->
+  <div id="gmail-info" class="info-box">
+    <strong>📧 Gmail:</strong> You'll be redirected to Google's OAuth login page when you
+    click Analyze for the first time. Make sure you have a
+    <code>gmail_credentials.json</code> file in the project root.
+    <a href="#" onclick="alert('See README_Gmail_Setup.md for instructions.')">Setup guide</a>
+  </div>
+
+  <!-- Microsoft info box -->
+  <div id="microsoft-info" class="info-box hidden">
+    <strong>📨 Microsoft:</strong> A device code will appear in the terminal when you
+    click Analyze. Visit the URL shown and enter the code to authenticate.
+    Set <code>MICROSOFT_CLIENT_ID</code> in your environment.
+    <a href="#" onclick="alert('See README_Microsoft_Setup.md for instructions.')">Setup guide</a>
+  </div>
+
+  <!-- IMAP fields -->
+  <div id="imap-fields" class="hidden">
+    <div class="form-group">
+      <label for="imap_host">IMAP Host</label>
+      <input type="text" id="imap_host" name="imap_host"
+             placeholder="imap.example.com" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="imap_port">Port</label>
+        <input type="number" id="imap_port" name="imap_port" value="993" />
+      </div>
+      <div class="form-group checkbox-group">
+        <label>
+          <input type="checkbox" id="imap_use_ssl" name="imap_use_ssl" checked />
+          Use SSL/TLS
+        </label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="imap_username">IMAP Username <small>(leave blank to use email)</small></label>
+      <input type="text" id="imap_username" name="imap_username" placeholder="Optional" />
+    </div>
+    <div class="form-group">
+      <label for="password">Password / App Password</label>
+      <input type="password" id="password" name="password"
+             placeholder="Stored encrypted locally" />
+      <small class="hint">Stored encrypted on your machine. Never sent anywhere.</small>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <a class="btn btn-outline" href="/">Cancel</a>
+    <button class="btn btn-primary" type="submit">Add Account</button>
+  </div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showProviderFields(provider) {
+  document.getElementById('gmail-info').classList.add('hidden');
+  document.getElementById('microsoft-info').classList.add('hidden');
+  document.getElementById('imap-fields').classList.add('hidden');
+  if (provider === 'gmail') {
+    document.getElementById('gmail-info').classList.remove('hidden');
+  } else if (provider === 'microsoft') {
+    document.getElementById('microsoft-info').classList.remove('hidden');
+  } else if (provider === 'imap') {
+    document.getElementById('imap-fields').classList.remove('hidden');
+  }
+}
+showProviderFields('gmail');
+</script>
+{% endblock %}

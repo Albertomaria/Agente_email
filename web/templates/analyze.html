@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Analyzing {{ account.email }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🔍 Analyzing <span class="email-highlight">{{ account.email }}</span></h1>
+</div>
+
+<div class="progress-card" id="progressCard">
+  <div class="progress-status" id="statusMsg">Connecting…</div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+  </div>
+  <div class="progress-counters">
+    <span id="senderCount">0</span> senders &nbsp;|&nbsp;
+    <span id="emailCount">0</span> emails scanned
+  </div>
+  <div class="progress-log" id="progressLog"></div>
+</div>
+
+<div id="doneCard" class="done-card hidden">
+  <div class="done-icon">✅</div>
+  <h2>Analysis complete!</h2>
+  <p id="doneSummary"></p>
+  <a class="btn btn-primary btn-lg" id="reviewBtn" href="/dashboard/{{ account.id }}">
+    📋 Review Senders →
+  </a>
+</div>
+
+<div id="errorCard" class="error-card hidden">
+  <div class="done-icon">❌</div>
+  <h2>Analysis failed</h2>
+  <p id="errorMsg"></p>
+  <a class="btn btn-outline" href="/">Back to Accounts</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const accountId = "{{ account.id }}";
+  const source = new EventSource(`/analyze/${accountId}`);
+  let senderCount = 0, emailCount = 0;
+
+  source.onmessage = function(e) {
+    const ev = JSON.parse(e.data);
+    document.getElementById('statusMsg').textContent = ev.message;
+
+    if (ev.data) {
+      if (ev.data.total_senders !== undefined) senderCount = ev.data.total_senders;
+      if (ev.data.total_emails !== undefined) emailCount = ev.data.total_emails;
+      if (ev.data.count !== undefined) emailCount += ev.data.count;
+    }
+    if (ev.current > senderCount) senderCount = ev.current;
+    document.getElementById('senderCount').textContent = senderCount;
+    document.getElementById('emailCount').textContent = emailCount.toLocaleString();
+
+    // Rolling log
+    const log = document.getElementById('progressLog');
+    const entry = document.createElement('div');
+    entry.textContent = ev.message;
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+
+    if (ev.type === 'done') {
+      source.close();
+      document.getElementById('progressCard').classList.add('hidden');
+      document.getElementById('doneCard').classList.remove('hidden');
+      document.getElementById('doneSummary').textContent = ev.message;
+    } else if (ev.type === 'error') {
+      source.close();
+      document.getElementById('progressCard').classList.add('hidden');
+      document.getElementById('errorCard').classList.remove('hidden');
+      document.getElementById('errorMsg').textContent = ev.message;
+    }
+  };
+
+  source.onerror = function() {
+    source.close();
+    document.getElementById('statusMsg').textContent = 'Connection lost.';
+  };
+})();
+</script>
+{% endblock %}

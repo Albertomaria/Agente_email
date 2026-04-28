@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Email Cleaner — Accounts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Your Email Accounts</h1>
+  <a class="btn btn-primary" href="/accounts/add">+ Add Account</a>
+</div>
+
+{% if not accounts %}
+<div class="empty-state">
+  <div class="empty-icon">📭</div>
+  <h2>No accounts yet</h2>
+  <p>Add a Gmail, Outlook, or IMAP account to get started.</p>
+  <a class="btn btn-primary" href="/accounts/add">Add Your First Account</a>
+</div>
+{% else %}
+<div class="accounts-grid">
+  {% for item in accounts %}
+  <div class="account-card">
+    <div class="account-header">
+      <span class="provider-icon">{{ item.icon }}</span>
+      <div class="account-info">
+        <h3>{{ item.account.display_name }}</h3>
+        <span class="account-email">{{ item.account.email }}</span>
+        <span class="badge badge-{{ item.account.provider_type.value }}">
+          {{ item.account.provider_type.value.upper() }}
+        </span>
+      </div>
+    </div>
+
+    {% if item.meta %}
+    <div class="account-stats">
+      {% if item.meta.completed %}
+        <span class="stat"><strong>{{ item.meta.total_senders }}</strong> senders</span>
+        <span class="stat"><strong>{{ item.meta.total_emails }}</strong> emails</span>
+        <span class="badge badge-done">Analyzed</span>
+      {% elif item.meta.error %}
+        <span class="badge badge-error">Error</span>
+        <span class="error-msg">{{ item.meta.error[:80] }}</span>
+      {% else %}
+        <span class="badge badge-pending">Not analyzed</span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="account-actions">
+      <a class="btn btn-secondary" href="/analyze/{{ item.account.id }}/page">
+        🔍 Analyze
+      </a>
+      {% if item.meta and item.meta.completed %}
+      <a class="btn btn-primary" href="/dashboard/{{ item.account.id }}">
+        📋 Review
+      </a>
+      <a class="btn btn-outline" href="/log/{{ item.account.id }}">
+        📜 Log
+      </a>
+      {% endif %}
+      <form method="post" action="/accounts/{{ item.account.id }}/delete"
+            onsubmit="return confirm('Delete this account and all its data?')">
+        <button class="btn btn-danger" type="submit">🗑</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,39 @@
+# ── Credentials & secrets (MAI committare!) ────────────────────────────────
+gmail_credentials.json
+data/tokens/
+data/.keyfile
+data/secrets.enc
+.env
+
+# ── Database & logs ────────────────────────────────────────────────────────
+data/email_cleaner.db
+data/logs/
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# ── Virtual environments ───────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── IDE ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Execute — {{ account.email }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>⚡ Execute Actions</h1>
+  <p class="subhead">{{ account.email }} — {{ actionable_count }} senders queued</p>
+</div>
+
+{% if actionable_count == 0 %}
+<div class="empty-state">
+  <div class="empty-icon">🤷</div>
+  <h2>Nothing to execute</h2>
+  <p>Go back to the dashboard and mark some senders for deletion.</p>
+  <a class="btn btn-primary" href="/dashboard/{{ account.id }}">← Back to Dashboard</a>
+</div>
+{% else %}
+<div class="confirm-box">
+  <p>You are about to execute the following actions:</p>
+  <ul>
+    <li>{{ actionable_count }} senders will have their emails deleted</li>
+    <li>Senders marked "Unsub+Delete" will also have an unsubscribe request sent</li>
+  </ul>
+  <p class="warning">⚠️ This action is <strong>irreversible</strong>. Deleted emails cannot be recovered.</p>
+  <button class="btn btn-danger btn-lg" id="startBtn" onclick="startExecution()">
+    ⚡ Start Execution
+  </button>
+  <a class="btn btn-outline" href="/dashboard/{{ account.id }}">← Back to Dashboard</a>
+</div>
+
+<div class="progress-card hidden" id="progressCard">
+  <div class="progress-status" id="statusMsg">Starting…</div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+  </div>
+  <div class="progress-log" id="progressLog"></div>
+</div>
+
+<div id="doneCard" class="done-card hidden">
+  <div class="done-icon">✅</div>
+  <h2>Execution complete!</h2>
+  <p id="doneSummary"></p>
+  <a class="btn btn-primary" href="/log/{{ account.id }}">📜 View Full Log</a>
+  <a class="btn btn-outline" href="/">← Accounts</a>
+</div>
+
+<div id="errorCard" class="error-card hidden">
+  <div class="done-icon">❌</div>
+  <h2>Execution failed</h2>
+  <p id="errorMsg"></p>
+  <a class="btn btn-outline" href="/dashboard/{{ account.id }}">← Back to Dashboard</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function startExecution() {
+  document.getElementById('startBtn').disabled = true;
+  document.querySelector('.confirm-box').classList.add('hidden');
+  document.getElementById('progressCard').classList.remove('hidden');
+
+  const accountId = "{{ account.id }}";
+  const source = new EventSource(`/execute/${accountId}`);
+  const total = {{ actionable_count }};
+
+  source.onmessage = function(e) {
+    const ev = JSON.parse(e.data);
+    document.getElementById('statusMsg').textContent = ev.message;
+
+    if (ev.total > 0) {
+      const pct = Math.round((ev.current / ev.total) * 100);
+      document.getElementById('progressBar').style.width = pct + '%';
+    }
+
+    const log = document.getElementById('progressLog');
+    const entry = document.createElement('div');
+    entry.textContent = ev.message;
+    if (ev.type === 'error') entry.className = 'log-error';
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+
+    if (ev.type === 'done') {
+      source.close();
+      document.getElementById('progressCard').classList.add('hidden');
+      document.getElementById('doneCard').classList.remove('hidden');
+      document.getElementById('doneSummary').textContent = ev.message;
+    } else if (ev.type === 'error') {
+      source.close();
+      document.getElementById('progressCard').classList.add('hidden');
+      document.getElementById('errorCard').classList.remove('hidden');
+      document.getElementById('errorMsg').textContent = ev.message;
+    }
+  };
+}
+</script>
+{% endblock %}

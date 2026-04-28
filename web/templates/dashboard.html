@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ account.email }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ icon }} {{ account.display_name }}</h1>
+    <p class="subhead">{{ meta.total_senders }} senders · {{ meta.total_emails | default(0) }} emails</p>
+  </div>
+  <div class="header-actions">
+    <a class="btn btn-outline" href="/analyze/{{ account.id }}/page">↻ Re-analyze</a>
+    <a class="btn btn-primary btn-lg" href="/execute/{{ account.id }}/page"
+       id="executeBtn">⚡ Execute Actions</a>
+  </div>
+</div>
+
+<!-- Bulk actions toolbar -->
+<div class="toolbar">
+  <div class="toolbar-left">
+    <span class="toolbar-label">Sort by:</span>
+    <a class="sort-link {% if current_sort == 'total_count' %}active{% endif %}"
+       href="?sort=total_count">Volume</a>
+    <a class="sort-link {% if current_sort == 'unread' %}active{% endif %}"
+       href="?sort=unread">Unread</a>
+    <a class="sort-link {% if current_sort == 'category' %}active{% endif %}"
+       href="?sort=category">Category</a>
+    <a class="sort-link {% if current_sort == 'name' %}active{% endif %}"
+       href="?sort=name">Name</a>
+  </div>
+  <div class="toolbar-right">
+    <button class="btn btn-sm btn-outline" onclick="bulkAction('newsletter','delete')">
+      🗑 Delete all newsletters
+    </button>
+    <button class="btn btn-sm btn-outline" onclick="bulkAction('newsletter','unsubscribe_delete')">
+      🚫 Unsub+Delete newsletters
+    </button>
+    <button class="btn btn-sm btn-danger" onclick="bulkAction('all','delete')">
+      🗑 Delete ALL marked
+    </button>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div class="filter-bar">
+  <input type="text" id="filterInput" placeholder="Filter by name or email…"
+         oninput="filterSenders(this.value)" />
+  <div class="legend">
+    <span class="badge badge-newsletter">Newsletter</span>
+    <span class="badge badge-transactional">Transactional</span>
+    <span class="badge badge-personal">Personal</span>
+  </div>
+</div>
+
+<!-- Sender table -->
+<div class="sender-table-wrap">
+  <table class="sender-table" id="senderTable">
+    <thead>
+      <tr>
+        <th>Sender</th>
+        <th class="col-count">Total</th>
+        <th class="col-count">Unread</th>
+        <th class="col-cat">Category</th>
+        <th class="col-unsub">Unsub</th>
+        <th class="col-actions">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in senders %}
+      {% set current_action = actions_map.get(s.email, 'keep') %}
+      <tr class="sender-row row-{{ current_action }}"
+          data-email="{{ s.email }}"
+          data-category="{{ s.category.value }}"
+          id="row-{{ loop.index }}">
+        <td class="col-sender">
+          <div class="sender-name">{{ s.name or s.email }}</div>
+          <div class="sender-addr">{{ s.email }}</div>
+          {% if s.sample_subject %}
+          <div class="sender-subject">{{ s.sample_subject[:80] }}</div>
+          {% endif %}
+        </td>
+        <td class="col-count">{{ s.total_count }}</td>
+        <td class="col-count {% if s.unread_count > 0 %}unread-count{% endif %}">
+          {{ s.unread_count }}
+        </td>
+        <td class="col-cat">
+          <span class="badge badge-{{ s.category.value }}">{{ s.category.value }}</span>
+        </td>
+        <td class="col-unsub">
+          {% if s.has_unsubscribe %}
+          <span title="{{ s.unsubscribe_url or s.unsubscribe_mailto }}">✓</span>
+          {% endif %}
+        </td>
+        <td class="col-actions">
+          <div class="action-buttons" data-email="{{ s.email }}">
+            <button class="btn-action btn-keep {% if current_action == 'keep' %}active{% endif %}"
+                    onclick="setAction('{{ s.email }}', 'keep', this)">
+              ✓ Keep
+            </button>
+            <button class="btn-action btn-delete {% if current_action == 'delete' %}active{% endif %}"
+                    onclick="setAction('{{ s.email }}', 'delete', this)">
+              🗑 Delete
+            </button>
+            <button class="btn-action btn-unsub {% if current_action == 'unsubscribe_delete' %}active{% endif %} {% if not s.has_unsubscribe %}disabled{% endif %}"
+                    onclick="setAction('{{ s.email }}', 'unsubscribe_delete', this)"
+                    {% if not s.has_unsubscribe %}disabled title="No unsubscribe link found"{% endif %}>
+              🚫 Unsub+Del
+            </button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Sticky summary bar -->
+<div class="summary-bar" id="summaryBar">
+  <span id="summaryKeep">Keep: 0</span>
+  <span id="summaryDelete">Delete: 0</span>
+  <span id="summaryUnsub">Unsub+Del: 0</span>
+  <a class="btn btn-primary" href="/execute/{{ account.id }}/page">⚡ Execute</a>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ACCOUNT_ID = "{{ account.id }}";
+
+async function setAction(email, action, btn) {
+  const row = btn.closest('tr');
+  // Optimistic UI update
+  row.querySelectorAll('.btn-action').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  row.className = row.className.replace(/row-\w+/, '') + ' row-' + action;
+
+  await fetch(`/dashboard/${ACCOUNT_ID}/action`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: `sender_email=${encodeURIComponent(email)}&action=${action}`,
+  });
+  updateSummary();
+}
+
+async function bulkAction(category, action) {
+  const rows = [...document.querySelectorAll('.sender-row')];
+  const targets = category === 'all'
+    ? rows.filter(r => {
+        const act = r.querySelector('.btn-action.active');
+        return act && act.classList.contains('btn-delete') || act && act.classList.contains('btn-unsub');
+      })
+    : rows.filter(r => r.dataset.category === category);
+
+  const payload = targets.map(r => ({
+    sender_email: r.dataset.email,
+    action: action,
+  }));
+  if (!payload.length) { alert('No matching senders.'); return; }
+  if (!confirm(`Apply "${action}" to ${payload.length} senders?`)) return;
+
+  // Update UI
+  targets.forEach(r => {
+    r.className = r.className.replace(/row-\w+/, '') + ' row-' + action;
+    r.querySelectorAll('.btn-action').forEach(b => b.classList.remove('active'));
+    const cls = action === 'delete' ? '.btn-delete'
+              : action === 'unsubscribe_delete' ? '.btn-unsub'
+              : '.btn-keep';
+    const target = r.querySelector(cls);
+    if (target) target.classList.add('active');
+  });
+
+  await fetch(`/dashboard/${ACCOUNT_ID}/actions`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  updateSummary();
+}
+
+function filterSenders(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.sender-row').forEach(row => {
+    const text = row.querySelector('.sender-name').textContent.toLowerCase()
+               + row.querySelector('.sender-addr').textContent.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+function updateSummary() {
+  let keep = 0, del = 0, unsub = 0;
+  document.querySelectorAll('.sender-row').forEach(row => {
+    const active = row.querySelector('.btn-action.active');
+    if (!active) return;
+    if (active.classList.contains('btn-keep')) keep++;
+    else if (active.classList.contains('btn-delete')) del++;
+    else if (active.classList.contains('btn-unsub')) unsub++;
+  });
+  document.getElementById('summaryKeep').textContent = `Keep: ${keep}`;
+  document.getElementById('summaryDelete').textContent = `Delete: ${del}`;
+  document.getElementById('summaryUnsub').textContent = `Unsub+Del: ${unsub}`;
+}
+
+document.addEventListener('DOMContentLoaded', updateSummary);
+</script>
+{% endblock %}

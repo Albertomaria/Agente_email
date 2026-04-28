@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from models import AccountConfig, ProviderType, SenderAction, ActionType
+from providers import get_provider
 from phases.analyze import AnalyzePhase
 from phases.execute import ExecutePhase
 from storage.credentials import CredentialStore
@@ -302,3 +303,17 @@ async def log_page(account_id: str, request: Request):
 async def api_senders(account_id: str):
     senders = db.get_senders(account_id)
     return JSONResponse([s.model_dump() for s in senders])
+
+
+@app.get("/api/preview/{account_id}/{sender_email:path}")
+async def api_preview(account_id: str, sender_email: str):
+    account = store.get_account(account_id)
+    if not account:
+        raise HTTPException(404, "Account not found")
+    provider = get_provider(account)
+    try:
+        await provider.connect()
+        previews = await provider.get_preview(sender_email, limit=5)
+    finally:
+        await provider.disconnect()
+    return JSONResponse(previews)

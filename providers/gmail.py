@@ -10,6 +10,7 @@ import asyncio
 import base64
 import json
 import re
+import time
 import threading
 from collections import defaultdict
 from pathlib import Path
@@ -73,7 +74,7 @@ class GmailProvider(EmailProvider):
         credentials_file = str(config.GMAIL_CREDENTIALS_FILE)
         flow = InstalledAppFlow.from_client_secrets_file(credentials_file, config.GMAIL_SCOPES)
         creds = flow.run_local_server(
-            port=config.OAUTH_REDIRECT_PORT,
+            port=0,  # 0 = OS sceglie una porta libera automaticamente
             prompt="consent",
             open_browser=True,
         )
@@ -154,32 +155,39 @@ class GmailProvider(EmailProvider):
             )
 
     def _fetch_all_message_ids(self) -> list[str]:
-        """Pages through messages.list to collect all IDs."""
+        """Pages through messages.list to collect all IDs including Spam and Trash."""
         ids = []
         page_token = None
         while True:
-            kwargs = {"userId": "me", "maxResults": 500}
+            kwargs = {
+                "userId": "me",
+                "maxResults": 500,
+                "includeSpamTrash": False,  # spam e cestino si svuotano direttamente da Gmail
+            }
             if page_token:
                 kwargs["pageToken"] = page_token
             resp = self._service.users().messages().list(**kwargs).execute()
             msgs = resp.get("messages", [])
             ids.extend(m["id"] for m in msgs)
             page_token = resp.get("nextPageToken")
+            logger.debug("Fetched %d IDs so far…", len(ids))
             if not page_token:
                 break
+        logger.info("Total message IDs fetched: %d", len(ids))
         return ids
 
     def _fetch_metadata_batch(self, message_ids: list[str]) -> dict[str, dict]:
         """
         Fetch From / Subject / List-Unsubscribe / labels for all messages
-        using Gmail batch HTTP requests.
+        using Gmail batch HTTP requests, with retry on rate-limit errors.
         """
         results = {}
         batch_size = config.GMAIL_BATCH_SIZE
+        max_retries = 3
 
         def _callback(request_id, response, exception):
             if exception:
-                logger.debug("Batch error for %s: %s", request_id, exception)
+                logger.debug("Batch item error for %s: %s", request_id, exception)
                 return
             headers = {
                 h["name"].lower(): h["value"]
@@ -193,22 +201,39 @@ class GmailProvider(EmailProvider):
                 "read": "UNREAD" not in labels,
             }
 
-        for i in range(0, len(message_ids), batch_size):
-            batch = self._service.new_batch_http_request(callback=_callback)
+        total = len(message_ids)
+        for i in range(0, total, batch_size):
             chunk = message_ids[i : i + batch_size]
-            for msg_id in chunk:
-                batch.add(
-                    self._service.users().messages().get(
-                        userId="me",
-                        id=msg_id,
-                        format="metadata",
-                        metadataHeaders=["From", "Subject", "List-Unsubscribe"],
-                    ),
-                    request_id=msg_id,
-                )
-            batch.execute()
-            logger.debug("Batch %d/%d processed", i + batch_size, len(message_ids))
+            for attempt in range(max_retries):
+                try:
+                    batch = self._service.new_batch_http_request(callback=_callback)
+                    for msg_id in chunk:
+                        batch.add(
+                            self._service.users().messages().get(
+                                userId="me",
+                                id=msg_id,
+                                format="metadata",
+                                metadataHeaders=["From", "Subject", "List-Unsubscribe"],
+                            ),
+                            request_id=msg_id,
+                        )
+                    batch.execute()
+                    break  # success
+                except Exception as e:
+                    wait = 2 ** attempt  # backoff: 1s, 2s, 4s
+                    logger.warning(
+                        "Batch %d/%d failed (attempt %d/%d): %s — retry in %ds",
+                        i + batch_size, total, attempt + 1, max_retries, e, wait,
+                    )
+                    time.sleep(wait)
+            else:
+                logger.error("Batch %d/%d failed after %d attempts, skipping.", i, total, max_retries)
 
+            # Piccola pausa tra batch per rispettare i rate limit Gmail (250 QPS)
+            time.sleep(0.1)
+            logger.debug("Batch %d/%d processed (%d results so far)", i + batch_size, total, len(results))
+
+        logger.info("Metadata fetch complete: %d/%d messages processed", len(results), total)
         return results
 
     # ── get_emails_by_sender ────────────────────────────────────────────────
@@ -243,20 +268,53 @@ class GmailProvider(EmailProvider):
         chunk_size = 1000  # Gmail batchDelete limit
         for i in range(0, len(message_ids), chunk_size):
             chunk = message_ids[i : i + chunk_size]
-            try:
-                await loop.run_in_executor(
-                    None,
-                    lambda c=chunk: self._service.users()
-                    .messages()
-                    .batchDelete(userId="me", body={"ids": c})
-                    .execute(),
-                )
-                deleted += len(chunk)
-            except HttpError as e:
-                logger.error("batchDelete error: %s", e)
+            await loop.run_in_executor(
+                None,
+                lambda c=chunk: self._service.users()
+                .messages()
+                .batchDelete(userId="me", body={"ids": c})
+                .execute(),
+            )
+            deleted += len(chunk)
+            logger.info("batchDelete OK: %d emails deleted", len(chunk))
             if progress_cb:
                 await progress_cb(min(i + chunk_size, len(message_ids)), len(message_ids))
         return deleted
+
+    # ── get_preview ─────────────────────────────────────────────────────────
+
+    async def get_preview(self, sender_email: str, limit: int = 5) -> list[dict]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._fetch_preview, sender_email, limit)
+
+    def _fetch_preview(self, sender_email: str, limit: int) -> list[dict]:
+        try:
+            resp = self._service.users().messages().list(
+                userId="me",
+                q=f"from:{sender_email}",
+                maxResults=limit,
+            ).execute()
+            previews = []
+            for m in resp.get("messages", [])[:limit]:
+                msg = self._service.users().messages().get(
+                    userId="me",
+                    id=m["id"],
+                    format="metadata",
+                    metadataHeaders=["From", "Subject", "Date"],
+                ).execute()
+                headers = {
+                    h["name"].lower(): h["value"]
+                    for h in msg.get("payload", {}).get("headers", [])
+                }
+                previews.append({
+                    "subject": headers.get("subject", "(no subject)"),
+                    "date": headers.get("date", ""),
+                    "snippet": msg.get("snippet", ""),
+                })
+            return previews
+        except Exception as e:
+            logger.debug("get_preview error: %s", e)
+            return []
 
     # ── get_unsubscribe_header ──────────────────────────────────────────────
 

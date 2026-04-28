@@ -22,8 +22,7 @@ WEB_PORT = int(os.getenv("WEB_PORT", "8765"))
 
 # ─── Gmail OAuth 2.0 ─────────────────────────────────────────────────────────
 GMAIL_SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.modify",
+    "https://mail.google.com/",  # necessario per batchDelete (cancellazione permanente)
 ]
 GMAIL_CREDENTIALS_FILE = BASE_DIR / "gmail_credentials.json"   # from Google Cloud Console
 GMAIL_TOKEN_DIR = TOKENS_DIR / "gmail"
@@ -50,7 +49,7 @@ MICROSOFT_GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 # Max emails to process per sender during analysis (0 = unlimited)
 MAX_EMAILS_PER_SENDER = 0
 # Batch size for API calls
-GMAIL_BATCH_SIZE = 500
+GMAIL_BATCH_SIZE = 100
 MICROSOFT_BATCH_SIZE = 20   # Graph API batch limit
 IMAP_BATCH_SIZE = 200
 

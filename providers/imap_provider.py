@@ -216,6 +216,41 @@ class ImapProvider(EmailProvider):
             logger.error("IMAP delete batch error: %s", e)
             return 0
 
+    # ── get_preview ─────────────────────────────────────────────────────────
+
+    async def get_preview(self, sender_email: str, limit: int = 5) -> list[dict]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._fetch_preview, sender_email, limit)
+
+    def _fetch_preview(self, sender_email: str, limit: int) -> list[dict]:
+        try:
+            self._imap.select("INBOX", readonly=True)
+            status, data = self._imap.uid("search", None, f'FROM "{sender_email}"')
+            if status != "OK":
+                return []
+            uids = data[0].split()[-limit:]  # prendi gli ultimi N
+            if not uids:
+                return []
+            uid_set = b",".join(uids)
+            status, fetch_data = self._imap.uid(
+                "fetch", uid_set,
+                "(BODY.PEEK[HEADER.FIELDS (SUBJECT DATE)])"
+            )
+            previews = []
+            for item in fetch_data:
+                if not isinstance(item, tuple):
+                    continue
+                msg = email.message_from_bytes(item[1])
+                previews.append({
+                    "subject": _decode_header_value(msg.get("Subject", "(no subject)")),
+                    "date": msg.get("Date", ""),
+                    "snippet": "",
+                })
+            return previews
+        except Exception as e:
+            logger.debug("get_preview error: %s", e)
+            return []
+
     # ── get_unsubscribe_header ──────────────────────────────────────────────
 
     async def get_unsubscribe_header(self, message_id: str) -> Optional[str]:

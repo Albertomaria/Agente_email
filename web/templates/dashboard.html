@@ -92,6 +92,10 @@
         </td>
         <td class="col-actions">
           <div class="action-buttons" data-email="{{ s.email }}">
+            <button class="btn-action btn-preview"
+                    onclick="showPreview('{{ s.email }}', '{{ s.name | replace("'", "\\'") }}', this)">
+              👁
+            </button>
             <button class="btn-action btn-keep {% if current_action == 'keep' %}active{% endif %}"
                     onclick="setAction('{{ s.email }}', 'keep', this)">
               ✓ Keep
@@ -111,6 +115,22 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+<!-- Preview modal -->
+<div id="previewModal" class="modal-overlay hidden" onclick="closePreview(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="previewTitle"></div>
+        <div class="modal-email" id="previewEmail"></div>
+      </div>
+      <button class="modal-close" onclick="closePreview()">✕</button>
+    </div>
+    <div id="previewBody" class="modal-body">
+      <div class="preview-loading">Caricamento…</div>
+    </div>
+  </div>
 </div>
 
 <!-- Sticky summary bar -->
@@ -201,5 +221,48 @@ function updateSummary() {
 }
 
 document.addEventListener('DOMContentLoaded', updateSummary);
+
+// ── Preview modal ────────────────────────────────────────────────────────────
+async function showPreview(email, name, btn) {
+  const modal = document.getElementById('previewModal');
+  document.getElementById('previewTitle').textContent = name || email;
+  document.getElementById('previewEmail').textContent = email;
+  document.getElementById('previewBody').innerHTML = '<div class="preview-loading">Caricamento…</div>';
+  modal.classList.remove('hidden');
+
+  try {
+    const resp = await fetch(`/api/preview/${ACCOUNT_ID}/${encodeURIComponent(email)}`);
+    const previews = await resp.json();
+    if (!previews.length) {
+      document.getElementById('previewBody').innerHTML = '<p class="preview-empty">Nessuna email trovata.</p>';
+      return;
+    }
+    document.getElementById('previewBody').innerHTML = previews.map(p => `
+      <div class="preview-item">
+        <div class="preview-subject">${escHtml(p.subject)}</div>
+        <div class="preview-date">${escHtml(p.date)}</div>
+        ${p.snippet ? `<div class="preview-snippet">${escHtml(p.snippet)}</div>` : ''}
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('previewBody').innerHTML = '<p class="preview-empty">Errore nel caricamento.</p>';
+  }
+}
+
+function closePreview(event) {
+  if (!event || event.target === document.getElementById('previewModal')) {
+    document.getElementById('previewModal').classList.add('hidden');
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closePreview();
+});
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 </script>
 {% endblock %}

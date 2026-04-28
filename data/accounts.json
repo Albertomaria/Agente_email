@@ -1,0 +1,13 @@
+[
+  {
+    "id": "gmail_gcm.moro_6275bc",
+    "display_name": "Pap\u00e1",
+    "email": "gcm.moro@gmail.com",
+    "provider_type": "gmail",
+    "imap_host": null,
+    "imap_port": 993,
+    "imap_use_ssl": true,
+    "imap_username": null,
+    "created_at": "2026-04-28T14:12:18.600236"
+  }
+]

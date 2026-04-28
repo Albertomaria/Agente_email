@@ -256,6 +256,36 @@ class MicrosoftProvider(EmailProvider):
             logger.warning("%d deletes failed in batch", failed)
         return ok
 
+    # ── get_preview ─────────────────────────────────────────────────────────
+
+    async def get_preview(self, sender_email: str, limit: int = 5) -> list[dict]:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._fetch_preview, sender_email, limit)
+
+    def _fetch_preview(self, sender_email: str, limit: int) -> list[dict]:
+        try:
+            resp = self._session.get(
+                f"{GRAPH}/me/messages",
+                params={
+                    "$filter": f"from/emailAddress/address eq '{sender_email}'",
+                    "$select": "subject,receivedDateTime,bodyPreview",
+                    "$top": limit,
+                    "$orderby": "receivedDateTime desc",
+                },
+            )
+            resp.raise_for_status()
+            return [
+                {
+                    "subject": m.get("subject", "(no subject)"),
+                    "date": m.get("receivedDateTime", ""),
+                    "snippet": m.get("bodyPreview", ""),
+                }
+                for m in resp.json().get("value", [])
+            ]
+        except Exception as e:
+            logger.debug("get_preview error: %s", e)
+            return []
+
     # ── get_unsubscribe_header ──────────────────────────────────────────────
 
     async def get_unsubscribe_header(self, message_id: str) -> Optional[str]:

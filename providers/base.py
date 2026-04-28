@@ -65,6 +65,13 @@ class EmailProvider(ABC):
         """
 
     @abstractmethod
+    async def get_preview(self, sender_email: str, limit: int = 5) -> list[dict]:
+        """
+        Return up to `limit` recent messages from sender as preview dicts:
+        [{"subject": "...", "date": "...", "snippet": "..."}]
+        """
+
+    @abstractmethod
     async def get_unsubscribe_header(self, message_id: str) -> Optional[str]:
         """
         Return the raw value of the List-Unsubscribe header for one message,

@@ -1,63 +1,126 @@
 {% extends "base.html" %}
-{% block title %}Execute — {{ account.email }}{% endblock %}
+{% block title %}Conferma esecuzione — {{ account.email }}{% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h1>⚡ Execute Actions</h1>
-  <p class="subhead">{{ account.email }} — {{ actionable_count }} senders queued</p>
+  <h1>⚡ Conferma esecuzione</h1>
+  <p class="subhead">{{ account.email }}</p>
 </div>
 
 {% if actionable_count == 0 %}
 <div class="empty-state">
   <div class="empty-icon">🤷</div>
-  <h2>Nothing to execute</h2>
-  <p>Go back to the dashboard and mark some senders for deletion.</p>
-  <a class="btn btn-primary" href="/dashboard/{{ account.id }}">← Back to Dashboard</a>
+  <h2>Nessuna azione da eseguire</h2>
+  <p>Torna al dashboard e marca qualche mittente per la cancellazione.</p>
+  <a class="btn btn-primary" href="/dashboard/{{ account.id }}">← Torna al Dashboard</a>
 </div>
+
 {% else %}
-<div class="confirm-box">
-  <p>You are about to execute the following actions:</p>
-  <ul>
-    <li>{{ actionable_count }} senders will have their emails deleted</li>
-    <li>Senders marked "Unsub+Delete" will also have an unsubscribe request sent</li>
-  </ul>
-  <p class="warning">⚠️ This action is <strong>irreversible</strong>. Deleted emails cannot be recovered.</p>
-  <button class="btn btn-danger btn-lg" id="startBtn" onclick="startExecution()">
-    ⚡ Start Execution
-  </button>
-  <a class="btn btn-outline" href="/dashboard/{{ account.id }}">← Back to Dashboard</a>
+<div class="confirm-box" id="confirmBox">
+
+  <!-- Riepilogo numeri -->
+  <div class="execute-summary-bar">
+    <div class="exec-stat">
+      <span class="exec-stat-num">{{ actionable_count }}</span>
+      <span class="exec-stat-label">mittenti</span>
+    </div>
+    <div class="exec-stat-sep">→</div>
+    <div class="exec-stat exec-stat-danger">
+      <span class="exec-stat-num">{{ "{:,}".format(total_emails).replace(",", ".") }}</span>
+      <span class="exec-stat-label">email nel cestino</span>
+    </div>
+  </div>
+
+  <!-- Lista mittenti con scroll -->
+  <div class="exec-sender-list">
+    <table class="exec-table">
+      <thead>
+        <tr>
+          <th>Mittente</th>
+          <th>Email</th>
+          <th>Azione</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in action_summary %}
+        <tr>
+          <td>
+            <div class="exec-name">{{ item.sender_name or item.sender_email }}</div>
+            <div class="exec-addr">{{ item.sender_email }}</div>
+          </td>
+          <td class="exec-count">{{ item.count }}</td>
+          <td><span class="badge badge-{{ item.action }}">{{ item.action }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Avviso cestino -->
+  <div class="warning-trash">
+    🗑 Le email verranno spostate nel <strong>Cestino</strong> e resteranno lì per 30 giorni prima di essere eliminate definitivamente. Puoi recuperarle in qualsiasi momento da Gmail → Cestino.
+  </div>
+
+  <!-- Doppia conferma -->
+  <div class="double-confirm">
+    <label class="confirm-label">
+      Per confermare, digita il numero di email che verranno spostate nel cestino:
+      <strong>({{ "{:,}".format(total_emails).replace(",", ".") }})</strong>
+    </label>
+    <div class="confirm-input-row">
+      <input type="number" id="confirmInput" placeholder="digita {{ total_emails }}"
+             oninput="checkConfirm()" />
+      <button class="btn btn-danger btn-lg" id="startBtn" disabled onclick="startExecution()">
+        ⚡ Sposta nel cestino
+      </button>
+    </div>
+    <a class="btn btn-outline" href="/dashboard/{{ account.id }}">← Torna al Dashboard</a>
+  </div>
 </div>
 
 <div class="progress-card hidden" id="progressCard">
-  <div class="progress-status" id="statusMsg">Starting…</div>
+  <div class="progress-status" id="statusMsg">Avvio…</div>
   <div class="progress-bar-wrap">
     <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+  </div>
+  <div class="progress-counters">
+    <span id="progressDetail">0 / {{ actionable_count }} mittenti</span>
   </div>
   <div class="progress-log" id="progressLog"></div>
 </div>
 
 <div id="doneCard" class="done-card hidden">
   <div class="done-icon">✅</div>
-  <h2>Execution complete!</h2>
+  <h2>Esecuzione completata!</h2>
   <p id="doneSummary"></p>
-  <a class="btn btn-primary" href="/log/{{ account.id }}">📜 View Full Log</a>
-  <a class="btn btn-outline" href="/">← Accounts</a>
+  <div class="warning-trash" style="margin-top:1rem;">
+    💡 Le email sono nel <strong>Cestino di Gmail</strong>. Puoi recuperarle entro 30 giorni.
+  </div>
+  <a class="btn btn-primary" href="/log/{{ account.id }}">📜 Vedi log completo</a>
+  <a class="btn btn-outline" href="/">← Account</a>
 </div>
 
 <div id="errorCard" class="error-card hidden">
   <div class="done-icon">❌</div>
-  <h2>Execution failed</h2>
+  <h2>Esecuzione fallita</h2>
   <p id="errorMsg"></p>
-  <a class="btn btn-outline" href="/dashboard/{{ account.id }}">← Back to Dashboard</a>
+  <a class="btn btn-outline" href="/dashboard/{{ account.id }}">← Torna al Dashboard</a>
 </div>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
+const TOTAL_EMAILS = {{ total_emails }};
+
+function checkConfirm() {
+  const val = parseInt(document.getElementById('confirmInput').value);
+  document.getElementById('startBtn').disabled = (val !== TOTAL_EMAILS);
+}
+
 function startExecution() {
   document.getElementById('startBtn').disabled = true;
-  document.querySelector('.confirm-box').classList.add('hidden');
+  document.getElementById('confirmBox').classList.add('hidden');
   document.getElementById('progressCard').classList.remove('hidden');
 
   const accountId = "{{ account.id }}";
@@ -71,6 +134,8 @@ function startExecution() {
     if (ev.total > 0) {
       const pct = Math.round((ev.current / ev.total) * 100);
       document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressDetail').textContent =
+        `${ev.current} / ${ev.total} mittenti`;
     }
 
     const log = document.getElementById('progressLog');

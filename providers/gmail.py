@@ -12,6 +12,7 @@ import json
 import re
 import time
 import threading
+from datetime import datetime, timezone
 from collections import defaultdict
 from pathlib import Path
 from typing import AsyncIterator, Optional
@@ -112,6 +113,7 @@ class GmailProvider(EmailProvider):
             "ids": [],
             "unsubscribe": None,
             "subject": "",
+            "last_date": None,
         })
 
         for msg_id, meta in meta_map.items():
@@ -131,6 +133,9 @@ class GmailProvider(EmailProvider):
                 d["unsubscribe"] = meta["unsubscribe"]
             if not d["subject"] and meta.get("subject"):
                 d["subject"] = meta["subject"]
+            msg_date = meta.get("date")
+            if msg_date and (not d["last_date"] or msg_date > d["last_date"]):
+                d["last_date"] = msg_date
 
         # Step 4: yield SenderInfo objects
         for email_addr, d in sender_data.items():
@@ -151,6 +156,7 @@ class GmailProvider(EmailProvider):
                 unsubscribe_url=unsub_url,
                 unsubscribe_mailto=unsub_mailto,
                 sample_subject=d["subject"][:120],
+                last_email_date=d["last_date"],
                 message_ids=d["ids"],
             )
 
@@ -194,11 +200,18 @@ class GmailProvider(EmailProvider):
                 for h in response.get("payload", {}).get("headers", [])
             }
             labels = response.get("labelIds", [])
+            # internalDate è in millisecondi epoch
+            ts_ms = int(response.get("internalDate", 0))
+            iso_date = (
+                datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
+                if ts_ms else None
+            )
             results[request_id] = {
                 "from": headers.get("from", ""),
                 "subject": headers.get("subject", ""),
                 "unsubscribe": headers.get("list-unsubscribe", ""),
                 "read": "UNREAD" not in labels,
+                "date": iso_date,
             }
 
         total = len(message_ids)
@@ -261,22 +274,31 @@ class GmailProvider(EmailProvider):
 
     async def delete_emails(self, message_ids: list[str], progress_cb=None) -> int:
         """
-        Permanently deletes messages using batchDelete (max 1000 per call).
+        Moves messages to Trash using batchModify (aggiunge label TRASH, rimuove INBOX).
+        Più sicuro di batchDelete: le email restano nel cestino 30 giorni e sono recuperabili.
+        Max 1000 ID per chiamata.
         """
         loop = asyncio.get_event_loop()
         deleted = 0
-        chunk_size = 1000  # Gmail batchDelete limit
+        chunk_size = 1000
         for i in range(0, len(message_ids), chunk_size):
             chunk = message_ids[i : i + chunk_size]
             await loop.run_in_executor(
                 None,
                 lambda c=chunk: self._service.users()
                 .messages()
-                .batchDelete(userId="me", body={"ids": c})
+                .batchModify(
+                    userId="me",
+                    body={
+                        "ids": c,
+                        "addLabelIds": ["TRASH"],
+                        "removeLabelIds": ["INBOX", "UNREAD"],
+                    },
+                )
                 .execute(),
             )
             deleted += len(chunk)
-            logger.info("batchDelete OK: %d emails deleted", len(chunk))
+            logger.info("batchModify→TRASH OK: %d emails moved to trash", len(chunk))
             if progress_cb:
                 await progress_cb(min(i + chunk_size, len(message_ids)), len(message_ids))
         return deleted

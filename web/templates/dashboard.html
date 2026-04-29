@@ -47,10 +47,17 @@
     <a class="sort-link {% if current_sort == 'unread_pct' %}active{% endif %}" href="?sort=unread_pct">% Non lette</a>
     <a class="sort-link {% if current_sort == 'category' %}active{% endif %}" href="?sort=category">Categoria</a>
     <a class="sort-link {% if current_sort == 'name' %}active{% endif %}" href="?sort=name">Nome</a>
+    <a class="sort-link {% if current_sort == 'date' %}active{% endif %}" href="?sort=date">📅 Più recenti</a>
+    <a class="sort-link {% if current_sort == 'date_asc' %}active{% endif %}" href="?sort=date_asc">📅 Più vecchi</a>
   </div>
   <div class="toolbar-right">
-    <button class="btn btn-sm btn-outline" onclick="bulkVisibleAction('delete')">🗑 Elimina visibili</button>
-    <button class="btn btn-sm btn-outline" onclick="bulkVisibleAction('unsubscribe_delete')">🚫 Unsub+Elimina visibili</button>
+    <span class="bulk-hint" id="bulkHint">Seleziona una categoria per usare le azioni bulk</span>
+    <button class="btn btn-sm btn-outline" id="btnBulkDelete"
+            onclick="bulkVisibleAction('delete')" disabled
+            title="Seleziona prima una categoria o cerca un mittente">🗑 Elimina visibili</button>
+    <button class="btn btn-sm btn-outline" id="btnBulkUnsub"
+            onclick="bulkVisibleAction('unsubscribe_delete')" disabled
+            title="Seleziona prima una categoria o cerca un mittente">🚫 Unsub+Elimina visibili</button>
   </div>
 </div>
 
@@ -75,6 +82,7 @@
         <th class="col-count">Tot.</th>
         <th class="col-count">Non lette</th>
         <th class="col-pct">% NL</th>
+        <th class="col-date">Ultima email</th>
         <th class="col-cat">Categoria</th>
         <th class="col-unsub">Unsub</th>
         <th class="col-actions">Azioni</th>
@@ -104,6 +112,11 @@
                  style="width: {{ unread_pct }}%"></div>
             <span class="pct-label">{{ unread_pct }}%</span>
           </div>
+        </td>
+        <td class="col-date">
+          {% if s.last_email_date %}
+          <span class="date-label" data-iso="{{ s.last_email_date }}">{{ s.last_email_date[:10] }}</span>
+          {% else %}—{% endif %}
         </td>
         <td class="col-cat">
           <span class="badge badge-{{ s.category.value }}">{{ s.category.value }}</span>
@@ -181,6 +194,33 @@ function applyFilters() {
     row.style.display = (catOk && textOk) ? '' : 'none';
   });
   updateSummary();
+  updateBulkButtons();
+}
+
+function updateBulkButtons() {
+  const hasFilter = currentCat !== 'all' || currentText.length > 0;
+  const btnDel  = document.getElementById('btnBulkDelete');
+  const btnUnsub= document.getElementById('btnBulkUnsub');
+  const hint    = document.getElementById('bulkHint');
+
+  btnDel.disabled  = !hasFilter;
+  btnUnsub.disabled = !hasFilter;
+  hint.style.display = hasFilter ? 'none' : '';
+
+  if (hasFilter) {
+    const label = currentText
+      ? `"${currentText}"`
+      : document.querySelector('.cat-tab.active')?.textContent.trim() || '';
+    btnDel.textContent   = `🗑 Elimina visibili (${label})`;
+    btnUnsub.textContent = `🚫 Unsub+Elimina visibili (${label})`;
+    btnDel.title   = '';
+    btnUnsub.title = '';
+  } else {
+    btnDel.textContent   = '🗑 Elimina visibili';
+    btnUnsub.textContent = '🚫 Unsub+Elimina visibili';
+    btnDel.title   = 'Seleziona prima una categoria o cerca un mittente';
+    btnUnsub.title = 'Seleziona prima una categoria o cerca un mittente';
+  }
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
@@ -201,7 +241,10 @@ async function bulkVisibleAction(action) {
   const rows = [...document.querySelectorAll('.sender-row')]
     .filter(r => r.style.display !== 'none');
   if (!rows.length) { alert('Nessun mittente visibile.'); return; }
-  if (!confirm(`Applica "${action}" a ${rows.length} mittenti visibili?`)) return;
+  const label = currentText ? `ricerca "${currentText}"` :
+    document.querySelector('.cat-tab.active')?.textContent.trim() || '';
+  const actionLabel = action === 'delete' ? 'Elimina' : 'Unsub+Elimina';
+  if (!confirm(`${actionLabel} ${rows.length} mittenti (filtro: ${label})?\n\nLe email andranno nel Cestino e saranno recuperabili per 30 giorni.`)) return;
 
   rows.forEach(r => {
     r.className = r.className.replace(/row-\S+/, '').trim() + ' row-' + action;
@@ -319,6 +362,29 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-document.addEventListener('DOMContentLoaded', () => { updateCatCounts(); updateSummary(); });
+// ── Date relative ─────────────────────────────────────────────────────────────
+function relativeDate(isoStr) {
+  const now = Date.now();
+  const then = new Date(isoStr).getTime();
+  const diff = Math.floor((now - then) / 1000);
+  if (diff < 60)       return 'Ora';
+  if (diff < 3600)     return `${Math.floor(diff/60)} min fa`;
+  if (diff < 86400)    return `${Math.floor(diff/3600)} ore fa`;
+  if (diff < 86400*7)  return `${Math.floor(diff/86400)} giorni fa`;
+  if (diff < 86400*30) return `${Math.floor(diff/86400/7)} sett. fa`;
+  if (diff < 86400*365)return `${Math.floor(diff/86400/30)} mesi fa`;
+  return `${Math.floor(diff/86400/365)} anni fa`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  updateCatCounts();
+  updateSummary();
+  updateBulkButtons();
+  // Converti tutte le date in formato relativo
+  document.querySelectorAll('.date-label[data-iso]').forEach(el => {
+    el.textContent = relativeDate(el.dataset.iso);
+    el.title = el.dataset.iso.slice(0, 10);  // tooltip con data esatta
+  });
+});
 </script>
 {% endblock %}

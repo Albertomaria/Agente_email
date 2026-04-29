@@ -193,6 +193,10 @@ async def dashboard(account_id: str, request: Request, sort: str = "total_count"
         senders.sort(key=lambda s: s.unread_count, reverse=True)
     elif sort == "unread_pct":
         senders.sort(key=lambda s: s.unread_count / s.total_count if s.total_count else 0, reverse=True)
+    elif sort == "date":
+        senders.sort(key=lambda s: s.last_email_date or "", reverse=True)
+    elif sort == "date_asc":
+        senders.sort(key=lambda s: s.last_email_date or "9999")
     elif sort == "name":
         senders.sort(key=lambda s: s.name.lower())
     elif sort == "category":
@@ -279,9 +283,34 @@ async def execute_page(account_id: str, request: Request):
         raise HTTPException(404, "Account not found")
     actions = db.get_actions(account_id)
     actionable = [a for a in actions if a.action != ActionType.KEEP]
+
+    # Costruisci il riepilogo dettagliato con conteggio email reali
+    senders = db.get_senders(account_id)
+    sender_map = {s.email: s for s in senders}
+    total_emails = 0
+    action_summary = []
+    for a in actionable:
+        s = sender_map.get(a.sender_email)
+        count = s.total_count if s else 0
+        total_emails += count
+        action_summary.append({
+            "sender_email": a.sender_email,
+            "sender_name": s.name if s else "",
+            "action": a.action.value,
+            "count": count,
+        })
+    # Ordina per count decrescente
+    action_summary.sort(key=lambda x: x["count"], reverse=True)
+
     return templates.TemplateResponse(
         "execute.html",
-        {"request": request, "account": account, "actionable_count": len(actionable)},
+        {
+            "request": request,
+            "account": account,
+            "actionable_count": len(actionable),
+            "total_emails": total_emails,
+            "action_summary": action_summary,
+        },
     )
 
 

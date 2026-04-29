@@ -127,6 +127,7 @@ class MicrosoftProvider(EmailProvider):
                 unsubscribe_url=unsub_url,
                 unsubscribe_mailto=unsub_mailto,
                 sample_subject=d["subject"][:120],
+                last_email_date=d["last_date"],
                 message_ids=d["ids"],
             )
 
@@ -142,6 +143,7 @@ class MicrosoftProvider(EmailProvider):
             "ids": [],
             "unsubscribe": None,
             "subject": "",
+            "last_date": None,
         })
 
         select = "id,from,subject,isRead,internetMessageHeaders"
@@ -178,6 +180,10 @@ class MicrosoftProvider(EmailProvider):
 
                 if not d["subject"] and msg.get("subject"):
                     d["subject"] = msg["subject"]
+
+                msg_date = msg.get("receivedDateTime")  # già ISO 8601
+                if msg_date and (not d["last_date"] or msg_date > d["last_date"]):
+                    d["last_date"] = msg_date
 
                 if not d["unsubscribe"]:
                     headers = msg.get("internetMessageHeaders") or []

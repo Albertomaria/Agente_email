@@ -58,6 +58,7 @@ class SenderInfo(BaseModel):
     unsubscribe_url: Optional[str] = None
     unsubscribe_mailto: Optional[str] = None
     sample_subject: str = ""
+    last_email_date: Optional[str] = None  # ISO 8601, data dell'email più recente
     # Internal: list of message IDs (not persisted in full, used during execute)
     message_ids: list[str] = Field(default_factory=list)
 

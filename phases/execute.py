@@ -96,14 +96,25 @@ class ExecutePhase:
                             logger.warning("Could not unsubscribe from %s", action.sender_email)
 
                     # ── Delete step ─────────────────────────────────────
-                    # Use cached IDs if available; otherwise re-query
+                    # Only use the cached IDs from analysis — never re-query
+                    # Gmail as a fallback: a fallback search can silently match
+                    # far more messages than expected (special chars, no quoting,
+                    # includeSpamTrash not set) and is the root cause of mass
+                    # accidental deletions.
                     message_ids = (
                         sender_info.message_ids
                         if sender_info and sender_info.message_ids
-                        else await provider.get_emails_by_sender(action.sender_email)
+                        else []
                     )
 
-                    if message_ids:
+                    if not message_ids:
+                        logger.warning(
+                            "No cached message IDs for %s — skipping (re-run analysis first)",
+                            action.sender_email,
+                        )
+                        result.error = "No cached IDs — skipped. Re-run analysis."
+                        result.success = False
+                    else:
                         deleted = await provider.delete_emails(message_ids)
                         result.emails_deleted = deleted
                         total_deleted += deleted

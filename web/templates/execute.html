@@ -120,7 +120,7 @@ function startExecution() {
   const source = new EventSource(`/execute/${accountId}`);
   const total = {{ actionable_count }};
 
-  source.onmessage = function(e) {
+  source.onmessage = async function(e) {
     const ev = JSON.parse(e.data);
     document.getElementById('statusMsg').textContent = ev.message;
 

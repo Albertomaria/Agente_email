@@ -258,9 +258,15 @@ class GmailProvider(EmailProvider):
     def _search_by_sender(self, sender_email: str) -> list[str]:
         ids = []
         page_token = None
-        query = f"from:{sender_email}"
+        # Quote the address to avoid Gmail interpreting special chars broadly
+        query = f'from:"{sender_email}"'
         while True:
-            kwargs = {"userId": "me", "q": query, "maxResults": 500}
+            kwargs = {
+                "userId": "me",
+                "q": query,
+                "maxResults": 500,
+                "includeSpamTrash": False,  # never touch spam/trash
+            }
             if page_token:
                 kwargs["pageToken"] = page_token
             resp = self._service.users().messages().list(**kwargs).execute()

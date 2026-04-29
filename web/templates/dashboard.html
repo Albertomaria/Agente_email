@@ -38,6 +38,14 @@
   </button>
 </div>
 
+<!-- Action state filter -->
+<div class="action-tabs">
+  <button class="action-tab" data-state="all" onclick="filterAction(this)">Tutti</button>
+  <button class="action-tab active" data-state="undecided" onclick="filterAction(this)">⬜ Non decisi</button>
+  <button class="action-tab" data-state="delete" onclick="filterAction(this)">🗑 Da eliminare <span class="cat-count" id="cnt-act-delete"></span></button>
+  <button class="action-tab" data-state="keep" onclick="filterAction(this)">✓ Da tenere <span class="cat-count" id="cnt-act-keep"></span></button>
+</div>
+
 <!-- Toolbar -->
 <div class="toolbar">
   <div class="toolbar-left">
@@ -51,13 +59,14 @@
     <a class="sort-link {% if current_sort == 'date_asc' %}active{% endif %}" href="?sort=date_asc">📅 Più vecchi</a>
   </div>
   <div class="toolbar-right">
-    <span class="bulk-hint" id="bulkHint">Seleziona una categoria per usare le azioni bulk</span>
-    <button class="btn btn-sm btn-outline" id="btnBulkDelete"
-            onclick="bulkVisibleAction('delete')" disabled
-            title="Seleziona prima una categoria o cerca un mittente">🗑 Elimina visibili</button>
-    <button class="btn btn-sm btn-outline" id="btnBulkUnsub"
-            onclick="bulkVisibleAction('unsubscribe_delete')" disabled
-            title="Seleziona prima una categoria o cerca un mittente">🚫 Unsub+Elimina visibili</button>
+    <button class="btn btn-sm btn-danger-outline" onclick="markAllDelete()"
+            title="Segna i mittenti visibili come Elimina — poi cerca quelli da tenere e clicca ✓">
+      🗑 Segna visibili Elimina
+    </button>
+    <button class="btn btn-sm btn-outline" onclick="markAllKeep()"
+            title="Resetta i mittenti visibili a Tieni">
+      ↩ Reset visibili
+    </button>
   </div>
 </div>
 
@@ -96,6 +105,8 @@
           data-email="{{ s.email }}"
           data-category="{{ s.category.value }}"
           data-name="{{ s.name | lower }}"
+          data-action="{{ current_action }}"
+          data-decided="{{ 'true' if s.email in actions_map else 'false' }}"
           id="row-{{ loop.index }}">
         <td class="col-sender">
           <div class="sender-name">{{ s.name or s.email }}</div>
@@ -129,13 +140,16 @@
             <button class="btn-action btn-preview" title="Anteprima email"
                     onclick="showPreview('{{ s.email }}', '{{ s.name | replace("'", "\\'") }}', this)">👁</button>
             <button class="btn-action btn-keep {% if current_action == 'keep' %}active{% endif %}"
-                    onclick="setAction('{{ s.email }}', 'keep', this)">✓ Tieni</button>
+                    title="Tieni"
+                    onclick="setAction('{{ s.email }}', 'keep', this)">✓</button>
             <button class="btn-action btn-delete {% if current_action == 'delete' %}active{% endif %}"
-                    onclick="setAction('{{ s.email }}', 'delete', this)">🗑 Elimina</button>
+                    title="Elimina (sposta nel cestino)"
+                    onclick="setAction('{{ s.email }}', 'delete', this)">🗑</button>
             <button class="btn-action btn-unsub {% if current_action == 'unsubscribe_delete' %}active{% endif %}{% if not s.has_unsubscribe or s.category.value == 'suspicious' %} disabled{% endif %}"
                     onclick="setAction('{{ s.email }}', 'unsubscribe_delete', this)"
                     {% if not s.has_unsubscribe %}disabled title="Nessun link di disiscrizione"{% endif %}
-                    {% if s.category.value == 'suspicious' %}disabled title="⚠️ Mittente sospetto — non fare Unsub su possibile spam!"{% endif %}>🚫 Unsub+Del</button>
+                    {% if s.category.value == 'suspicious' %}disabled title="⚠️ Mittente sospetto — non fare Unsub su possibile spam!"{% endif %}
+                    {% if s.has_unsubscribe and s.category.value != 'suspicious' %}title="Unsub + Elimina"{% endif %}>🚫</button>
           </div>
         </td>
       </tr>
@@ -159,6 +173,7 @@
 const ACCOUNT_ID = "{{ account.id }}";
 let currentCat = 'all';
 let currentText = '';
+let currentActionState = 'undecided';
 
 // ── Category counts ──────────────────────────────────────────────────────────
 function updateCatCounts() {
@@ -179,6 +194,14 @@ function filterCat(btn) {
   applyFilters();
 }
 
+// ── Filter by action state ───────────────────────────────────────────────────
+function filterAction(btn) {
+  document.querySelectorAll('.action-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentActionState = btn.dataset.state;
+  applyFilters();
+}
+
 // ── Filter by text ───────────────────────────────────────────────────────────
 function filterText(q) {
   currentText = q.toLowerCase();
@@ -191,36 +214,30 @@ function applyFilters() {
     const textOk = !currentText ||
       row.dataset.email.includes(currentText) ||
       row.dataset.name.includes(currentText);
-    row.style.display = (catOk && textOk) ? '' : 'none';
+    const action = row.dataset.action;
+    const decided = row.dataset.decided === 'true';
+    let actionOk = true;
+    if (currentActionState === 'undecided') actionOk = !decided;
+    else if (currentActionState === 'delete')    actionOk = (action === 'delete' || action === 'unsubscribe_delete');
+    else if (currentActionState === 'keep')      actionOk = (action === 'keep' && decided);
+    row.style.display = (catOk && textOk && actionOk) ? '' : 'none';
   });
   updateSummary();
-  updateBulkButtons();
+  updateActionCounts();
 }
 
-function updateBulkButtons() {
-  const hasFilter = currentCat !== 'all' || currentText.length > 0;
-  const btnDel  = document.getElementById('btnBulkDelete');
-  const btnUnsub= document.getElementById('btnBulkUnsub');
-  const hint    = document.getElementById('bulkHint');
-
-  btnDel.disabled  = !hasFilter;
-  btnUnsub.disabled = !hasFilter;
-  hint.style.display = hasFilter ? 'none' : '';
-
-  if (hasFilter) {
-    const label = currentText
-      ? `"${currentText}"`
-      : document.querySelector('.cat-tab.active')?.textContent.trim() || '';
-    btnDel.textContent   = `🗑 Elimina visibili (${label})`;
-    btnUnsub.textContent = `🚫 Unsub+Elimina visibili (${label})`;
-    btnDel.title   = '';
-    btnUnsub.title = '';
-  } else {
-    btnDel.textContent   = '🗑 Elimina visibili';
-    btnUnsub.textContent = '🚫 Unsub+Elimina visibili';
-    btnDel.title   = 'Seleziona prima una categoria o cerca un mittente';
-    btnUnsub.title = 'Seleziona prima una categoria o cerca un mittente';
-  }
+function updateActionCounts() {
+  let del = 0, keep = 0;
+  document.querySelectorAll('.sender-row').forEach(r => {
+    const a = r.dataset.action;
+    const decided = r.dataset.decided === 'true';
+    if (a === 'delete' || a === 'unsubscribe_delete') del++;
+    else if (a === 'keep' && decided) keep++;
+  });
+  const elDel  = document.getElementById('cnt-act-delete');
+  const elKeep = document.getElementById('cnt-act-keep');
+  if (elDel)  elDel.textContent  = del;
+  if (elKeep) elKeep.textContent = keep;
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
@@ -229,38 +246,54 @@ async function setAction(email, action, btn) {
   row.querySelectorAll('.btn-action:not(.btn-preview)').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   row.className = row.className.replace(/row-\S+/, '').trim() + ' row-' + action;
+  row.dataset.action  = action;
+  row.dataset.decided = 'true';
   await fetch(`/dashboard/${ACCOUNT_ID}/action`, {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: `sender_email=${encodeURIComponent(email)}&action=${action}`,
   });
-  updateSummary();
+  // Se siamo in un filtro stato, riapplica per nascondere la riga se non appartiene più
+  if (currentActionState !== 'all') applyFilters();
+  else { updateSummary(); updateActionCounts(); }
 }
 
-async function bulkVisibleAction(action) {
-  const rows = [...document.querySelectorAll('.sender-row')]
-    .filter(r => r.style.display !== 'none');
+async function markAllDelete() {
+  const rows = [...document.querySelectorAll('.sender-row')].filter(r => r.style.display !== 'none');
   if (!rows.length) { alert('Nessun mittente visibile.'); return; }
   const label = currentText ? `ricerca "${currentText}"` :
-    document.querySelector('.cat-tab.active')?.textContent.trim() || '';
-  const actionLabel = action === 'delete' ? 'Elimina' : 'Unsub+Elimina';
-  if (!confirm(`${actionLabel} ${rows.length} mittenti (filtro: ${label})?\n\nLe email andranno nel Cestino e saranno recuperabili per 30 giorni.`)) return;
+    currentCat !== 'all' ? document.querySelector('.cat-tab.active')?.textContent.trim() : 'tutti';
+  if (!confirm(`Segna ${rows.length} mittenti (${label}) come "Elimina"?\n\nPotrai poi cercare i mittenti da tenere e cliccare ✓ su ognuno.\nNessuna email verrà spostata finché non clicchi ⚡ Esegui.`)) return;
+  _applyBulk(rows, 'delete');
+}
 
+async function markAllKeep() {
+  const rows = [...document.querySelectorAll('.sender-row')].filter(r => r.style.display !== 'none');
+  if (!rows.length) return;
+  const label = currentText ? `ricerca "${currentText}"` :
+    currentCat !== 'all' ? document.querySelector('.cat-tab.active')?.textContent.trim() : 'tutti';
+  if (!confirm(`Resetta ${rows.length} mittenti (${label}) a "Tieni"?`)) return;
+  _applyBulk(rows, 'keep');
+}
+
+async function _applyBulk(rows, action) {
   rows.forEach(r => {
     r.className = r.className.replace(/row-\S+/, '').trim() + ' row-' + action;
+    r.dataset.action  = action;
+    r.dataset.decided = 'true';
     r.querySelectorAll('.btn-action:not(.btn-preview)').forEach(b => b.classList.remove('active'));
-    const cls = action === 'delete' ? '.btn-delete' : '.btn-unsub';
+    const cls = action === 'delete' ? '.btn-delete' : action === 'keep' ? '.btn-keep' : '.btn-unsub';
     const t = r.querySelector(cls);
     if (t && !t.disabled) t.classList.add('active');
   });
-
   const payload = rows.map(r => ({ sender_email: r.dataset.email, action }));
   await fetch(`/dashboard/${ACCOUNT_ID}/actions`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload),
   });
-  updateSummary();
+  if (currentActionState !== 'all') applyFilters();
+  else { updateSummary(); updateActionCounts(); }
 }
 
 // ── Summary bar ──────────────────────────────────────────────────────────────
@@ -379,7 +412,8 @@ function relativeDate(isoStr) {
 document.addEventListener('DOMContentLoaded', () => {
   updateCatCounts();
   updateSummary();
-  updateBulkButtons();
+  updateActionCounts();
+  applyFilters(); // applica il filtro iniziale "Non decisi"
   // Converti tutte le date in formato relativo
   document.querySelectorAll('.date-label[data-iso]').forEach(el => {
     el.textContent = relativeDate(el.dataset.iso);

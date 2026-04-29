@@ -314,6 +314,16 @@ async def execute_page(account_id: str, request: Request):
     )
 
 
+@app.post("/execute/{account_id}/reset")
+async def execute_reset(account_id: str):
+    """Called by the client after a successful execution.
+    Clears analysis data so the next dashboard visit triggers a fresh analysis."""
+    if not store.get_account(account_id):
+        raise HTTPException(404, "Account not found")
+    db.reset_after_execution(account_id)
+    return JSONResponse({"ok": True})
+
+
 # ── Execution log ─────────────────────────────────────────────────────────────
 
 @app.get("/log/{account_id}", response_class=HTMLResponse)

@@ -150,6 +150,19 @@ class Database:
         with _conn() as con:
             con.execute("DELETE FROM actions WHERE account_id=?", (account_id,))
 
+    def reset_after_execution(self, account_id: str) -> None:
+        """Clear senders + actions and mark analysis as not completed.
+        Called automatically after a successful execution so the next
+        visit to the dashboard triggers a fresh analysis (which will
+        reflect emails now in Trash)."""
+        with _conn() as con:
+            con.execute("DELETE FROM senders WHERE account_id=?", (account_id,))
+            con.execute("DELETE FROM actions WHERE account_id=?", (account_id,))
+            con.execute(
+                "UPDATE analysis_meta SET completed=0 WHERE account_id=?",
+                (account_id,),
+            )
+
     # ── Execution log ────────────────────────────────────────────────────────
 
     def log_execution(self, result: ExecutionResult) -> None:

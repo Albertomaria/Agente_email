@@ -96,7 +96,11 @@
   <div class="warning-trash" style="margin-top:1rem;">
     💡 Le email sono nel <strong>Cestino di Gmail</strong>. Puoi recuperarle entro 30 giorni.
   </div>
-  <a class="btn btn-primary" href="/log/{{ account.id }}">📜 Vedi log completo</a>
+  <p style="color:#6b7280; font-size:.9rem; margin-top:1rem;">
+    L'analisi è stata resettata — al prossimo accesso al dashboard vedrai solo i mittenti ancora presenti in inbox.
+  </p>
+  <a class="btn btn-primary" href="/analyze/{{ account.id }}/page">↻ Re-analizza ora</a>
+  <a class="btn btn-outline" href="/log/{{ account.id }}">📜 Vedi log</a>
   <a class="btn btn-outline" href="/">← Account</a>
 </div>
 
@@ -147,6 +151,8 @@ function startExecution() {
 
     if (ev.type === 'done') {
       source.close();
+      // Reset analisi locale: la prossima apertura del dashboard rifará l'analisi da Gmail
+      await fetch(`/execute/${accountId}/reset`, { method: 'POST' });
       document.getElementById('progressCard').classList.add('hidden');
       document.getElementById('doneCard').classList.remove('hidden');
       document.getElementById('doneSummary').textContent = ev.message;

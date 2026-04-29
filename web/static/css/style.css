@@ -426,30 +426,6 @@ a:hover { text-decoration: underline; }
 .btn-preview { font-size: .9rem; opacity: .6; }
 .btn-preview:hover { opacity: 1; }
 
-/* ── Action state filter tabs ────────────────────────────────────────────────── */
-.action-tabs {
-  display: flex;
-  gap: .4rem;
-  margin-bottom: .75rem;
-  flex-wrap: wrap;
-}
-.action-tab {
-  padding: .3rem .85rem;
-  border-radius: 99px;
-  border: 1.5px solid #e5e7eb;
-  background: #fff;
-  font-size: .82rem;
-  font-weight: 500;
-  cursor: pointer;
-  color: #6b7280;
-  transition: all .12s;
-}
-.action-tab:hover { border-color: #9ca3af; color: #374151; }
-.action-tab.active {
-  background: #1a1a2e;
-  border-color: #1a1a2e;
-  color: #fff;
-}
 
 /* ── Bulk action hint ─────────────────────────────────────────────────────────── */
 .bulk-hint {
@@ -533,16 +509,6 @@ a:hover { text-decoration: underline; }
   flex-wrap: wrap;
   margin-bottom: 1rem;
 }
-.confirm-input-row input[type="number"] {
-  padding: .55rem .9rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 1rem;
-  width: 180px;
-  outline: none;
-  transition: border-color .2s;
-}
-.confirm-input-row input[type="number"]:focus { border-color: #4f46e5; }
 
 /* ── Utilities ───────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }

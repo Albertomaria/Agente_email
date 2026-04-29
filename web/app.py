@@ -172,6 +172,18 @@ async def analyze_page(account_id: str, request: Request):
     )
 
 
+@app.post("/analyze/{account_id}/reset")
+async def analyze_reset(account_id: str):
+    """Clear all analysis data and redirect to the analyze page.
+    Called by the Re-analizza button to guarantee a clean slate."""
+    if not store.get_account(account_id):
+        raise HTTPException(404, "Account not found")
+    db.clear_senders(account_id)
+    db.clear_actions(account_id)
+    db.set_analysis_meta(account_id, total_emails=0, total_senders=0, completed=False)
+    return RedirectResponse(f"/analyze/{account_id}/page", status_code=303)
+
+
 # ── Phase 2: Dashboard ────────────────────────────────────────────────────────
 
 @app.get("/dashboard/{account_id}", response_class=HTMLResponse)

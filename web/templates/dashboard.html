@@ -8,7 +8,9 @@
     <p class="subhead">{{ meta.total_senders }} mittenti · {{ meta.total_emails | default(0) }} email</p>
   </div>
   <div class="header-actions">
-    <a class="btn btn-outline" href="/analyze/{{ account.id }}/page">↻ Re-analizza</a>
+    <form method="POST" action="/analyze/{{ account.id }}/reset" style="display:inline">
+      <button type="submit" class="btn btn-outline">↻ Re-analizza</button>
+    </form>
     <a class="btn btn-primary btn-lg" href="/execute/{{ account.id }}/page">⚡ Esegui azioni</a>
   </div>
 </div>
@@ -36,14 +38,6 @@
   <button class="cat-tab" data-cat="suspicious" onclick="filterCat(this)">
     ⚠️ Sospetto <span class="cat-count" id="cnt-suspicious"></span>
   </button>
-</div>
-
-<!-- Action state filter -->
-<div class="action-tabs">
-  <button class="action-tab" data-state="all" onclick="filterAction(this)">Tutti</button>
-  <button class="action-tab active" data-state="undecided" onclick="filterAction(this)">⬜ Non decisi</button>
-  <button class="action-tab" data-state="delete" onclick="filterAction(this)">🗑 Da eliminare <span class="cat-count" id="cnt-act-delete"></span></button>
-  <button class="action-tab" data-state="keep" onclick="filterAction(this)">✓ Da tenere <span class="cat-count" id="cnt-act-keep"></span></button>
 </div>
 
 <!-- Toolbar -->
@@ -106,7 +100,6 @@
           data-category="{{ s.category.value }}"
           data-name="{{ s.name | lower }}"
           data-action="{{ current_action }}"
-          data-decided="{{ 'true' if s.email in actions_map else 'false' }}"
           id="row-{{ loop.index }}">
         <td class="col-sender">
           <div class="sender-name">{{ s.name or s.email }}</div>
@@ -173,7 +166,6 @@
 const ACCOUNT_ID = "{{ account.id }}";
 let currentCat = 'all';
 let currentText = '';
-let currentActionState = 'undecided';
 
 // ── Category counts ──────────────────────────────────────────────────────────
 function updateCatCounts() {
@@ -194,13 +186,6 @@ function filterCat(btn) {
   applyFilters();
 }
 
-// ── Filter by action state ───────────────────────────────────────────────────
-function filterAction(btn) {
-  document.querySelectorAll('.action-tab').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  currentActionState = btn.dataset.state;
-  applyFilters();
-}
 
 // ── Filter by text ───────────────────────────────────────────────────────────
 function filterText(q) {
@@ -214,30 +199,9 @@ function applyFilters() {
     const textOk = !currentText ||
       row.dataset.email.includes(currentText) ||
       row.dataset.name.includes(currentText);
-    const action = row.dataset.action;
-    const decided = row.dataset.decided === 'true';
-    let actionOk = true;
-    if (currentActionState === 'undecided') actionOk = !decided;
-    else if (currentActionState === 'delete')    actionOk = (action === 'delete' || action === 'unsubscribe_delete');
-    else if (currentActionState === 'keep')      actionOk = (action === 'keep' && decided);
-    row.style.display = (catOk && textOk && actionOk) ? '' : 'none';
+    row.style.display = (catOk && textOk) ? '' : 'none';
   });
   updateSummary();
-  updateActionCounts();
-}
-
-function updateActionCounts() {
-  let del = 0, keep = 0;
-  document.querySelectorAll('.sender-row').forEach(r => {
-    const a = r.dataset.action;
-    const decided = r.dataset.decided === 'true';
-    if (a === 'delete' || a === 'unsubscribe_delete') del++;
-    else if (a === 'keep' && decided) keep++;
-  });
-  const elDel  = document.getElementById('cnt-act-delete');
-  const elKeep = document.getElementById('cnt-act-keep');
-  if (elDel)  elDel.textContent  = del;
-  if (elKeep) elKeep.textContent = keep;
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
@@ -246,16 +210,13 @@ async function setAction(email, action, btn) {
   row.querySelectorAll('.btn-action:not(.btn-preview)').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   row.className = row.className.replace(/row-\S+/, '').trim() + ' row-' + action;
-  row.dataset.action  = action;
-  row.dataset.decided = 'true';
+  row.dataset.action = action;
   await fetch(`/dashboard/${ACCOUNT_ID}/action`, {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     body: `sender_email=${encodeURIComponent(email)}&action=${action}`,
   });
-  // Se siamo in un filtro stato, riapplica per nascondere la riga se non appartiene più
-  if (currentActionState !== 'all') applyFilters();
-  else { updateSummary(); updateActionCounts(); }
+  updateSummary();
 }
 
 async function markAllDelete() {
@@ -279,8 +240,7 @@ async function markAllKeep() {
 async function _applyBulk(rows, action) {
   rows.forEach(r => {
     r.className = r.className.replace(/row-\S+/, '').trim() + ' row-' + action;
-    r.dataset.action  = action;
-    r.dataset.decided = 'true';
+    r.dataset.action = action;
     r.querySelectorAll('.btn-action:not(.btn-preview)').forEach(b => b.classList.remove('active'));
     const cls = action === 'delete' ? '.btn-delete' : action === 'keep' ? '.btn-keep' : '.btn-unsub';
     const t = r.querySelector(cls);
@@ -292,8 +252,7 @@ async function _applyBulk(rows, action) {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(payload),
   });
-  if (currentActionState !== 'all') applyFilters();
-  else { updateSummary(); updateActionCounts(); }
+  updateSummary();
 }
 
 // ── Summary bar ──────────────────────────────────────────────────────────────
@@ -412,8 +371,6 @@ function relativeDate(isoStr) {
 document.addEventListener('DOMContentLoaded', () => {
   updateCatCounts();
   updateSummary();
-  updateActionCounts();
-  applyFilters(); // applica il filtro iniziale "Non decisi"
   // Converti tutte le date in formato relativo
   document.querySelectorAll('.date-label[data-iso]').forEach(el => {
     el.textContent = relativeDate(el.dataset.iso);

@@ -61,20 +61,14 @@
     🗑 Le email verranno spostate nel <strong>Cestino</strong> e resteranno lì per 30 giorni prima di essere eliminate definitivamente. Puoi recuperarle in qualsiasi momento da Gmail → Cestino.
   </div>
 
-  <!-- Doppia conferma -->
+  <!-- Conferma -->
   <div class="double-confirm">
-    <label class="confirm-label">
-      Per confermare, digita il numero di email che verranno spostate nel cestino:
-      <strong>({{ "{:,}".format(total_emails).replace(",", ".") }})</strong>
-    </label>
     <div class="confirm-input-row">
-      <input type="number" id="confirmInput" placeholder="digita {{ total_emails }}"
-             oninput="checkConfirm()" />
-      <button class="btn btn-danger btn-lg" id="startBtn" disabled onclick="startExecution()">
+      <button class="btn btn-danger btn-lg" id="startBtn" onclick="startExecution()">
         ⚡ Sposta nel cestino
       </button>
+      <a class="btn btn-outline" href="/dashboard/{{ account.id }}">← Torna al Dashboard</a>
     </div>
-    <a class="btn btn-outline" href="/dashboard/{{ account.id }}">← Torna al Dashboard</a>
   </div>
 </div>
 
@@ -99,7 +93,9 @@
   <p style="color:#6b7280; font-size:.9rem; margin-top:1rem;">
     L'analisi è stata resettata — al prossimo accesso al dashboard vedrai solo i mittenti ancora presenti in inbox.
   </p>
-  <a class="btn btn-primary" href="/analyze/{{ account.id }}/page">↻ Re-analizza ora</a>
+  <form method="POST" action="/analyze/{{ account.id }}/reset" style="display:inline">
+    <button type="submit" class="btn btn-primary">↻ Re-analizza ora</button>
+  </form>
   <a class="btn btn-outline" href="/log/{{ account.id }}">📜 Vedi log</a>
   <a class="btn btn-outline" href="/">← Account</a>
 </div>
@@ -115,13 +111,6 @@
 
 {% block scripts %}
 <script>
-const TOTAL_EMAILS = {{ total_emails }};
-
-function checkConfirm() {
-  const val = parseInt(document.getElementById('confirmInput').value);
-  document.getElementById('startBtn').disabled = (val !== TOTAL_EMAILS);
-}
-
 function startExecution() {
   document.getElementById('startBtn').disabled = true;
   document.getElementById('confirmBox').classList.add('hidden');

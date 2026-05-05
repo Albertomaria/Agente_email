@@ -27,6 +27,19 @@
   </a>
 </div>
 
+<div id="authCard" class="auth-card hidden">
+  <div class="done-icon">🔐</div>
+  <h2>Accesso Microsoft richiesto</h2>
+  <p>Apri il link qui sotto e inserisci il codice per autorizzare l'app.</p>
+  <div class="auth-code-box">
+    <span class="auth-code" id="authCode"></span>
+  </div>
+  <a class="btn btn-primary btn-lg" id="authLink" href="#" target="_blank">
+    Apri microsoft.com/devicelogin ↗
+  </a>
+  <p class="auth-waiting">⏳ In attesa di autorizzazione… (puoi tornare qui dopo aver completato il login)</p>
+</div>
+
 <div id="errorCard" class="error-card hidden">
   <div class="done-icon">❌</div>
   <h2>Analysis failed</h2>
@@ -62,14 +75,28 @@
     log.appendChild(entry);
     log.scrollTop = log.scrollHeight;
 
-    if (ev.type === 'done') {
+    if (ev.type === 'auth_required') {
+      // Microsoft device flow — show the login card
+      document.getElementById('progressCard').classList.add('hidden');
+      document.getElementById('authCard').classList.remove('hidden');
+      document.getElementById('authCode').textContent = ev.data?.user_code || '';
+      const uri = ev.data?.verification_uri || 'https://microsoft.com/devicelogin';
+      document.getElementById('authLink').href = uri;
+      document.getElementById('authLink').textContent = `Apri ${uri} ↗`;
+    } else if (ev.type === 'progress' && document.getElementById('authCard').classList.contains('hidden') === false) {
+      // Auth completed, switch back to progress card
+      document.getElementById('authCard').classList.add('hidden');
+      document.getElementById('progressCard').classList.remove('hidden');
+    } else if (ev.type === 'done') {
       source.close();
       document.getElementById('progressCard').classList.add('hidden');
+      document.getElementById('authCard').classList.add('hidden');
       document.getElementById('doneCard').classList.remove('hidden');
       document.getElementById('doneSummary').textContent = ev.message;
     } else if (ev.type === 'error') {
       source.close();
       document.getElementById('progressCard').classList.add('hidden');
+      document.getElementById('authCard').classList.add('hidden');
       document.getElementById('errorCard').classList.remove('hidden');
       document.getElementById('errorMsg').textContent = ev.message;
     }

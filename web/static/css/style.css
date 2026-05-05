@@ -427,6 +427,40 @@ a:hover { text-decoration: underline; }
 .btn-preview:hover { opacity: 1; }
 
 
+/* ── Microsoft auth card ─────────────────────────────────────────────────────── */
+.auth-card {
+  text-align: center;
+  background: #fff;
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  border: 2px solid #c7d2fe;
+  max-width: 560px;
+  margin: 0 auto;
+}
+.auth-card h2 { margin-bottom: .5rem; }
+.auth-card p { color: #6b7280; margin-bottom: 1.25rem; }
+.auth-code-box {
+  background: #f0f4ff;
+  border: 2px dashed #6366f1;
+  border-radius: 10px;
+  padding: .85rem 1.5rem;
+  margin-bottom: 1.25rem;
+  display: inline-block;
+}
+.auth-code {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: .25em;
+  color: #4338ca;
+  font-family: monospace;
+}
+.auth-waiting {
+  margin-top: 1.25rem !important;
+  font-size: .88rem;
+  color: #9ca3af !important;
+}
+
 /* ── Bulk action hint ─────────────────────────────────────────────────────────── */
 .bulk-hint {
   font-size: .8rem;

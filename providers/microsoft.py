@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import queue as stdlib_queue
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Callable, Optional
 
 import msal
 import requests
@@ -39,6 +40,8 @@ class MicrosoftProvider(EmailProvider):
         self._access_token: Optional[str] = None
         self._session: Optional[requests.Session] = None
         self._cache_path = _TOKEN_CACHE_DIR / f"{account.id}.json"
+        # Queue used to pass the device-flow message back to the async caller
+        self.auth_queue: stdlib_queue.Queue = stdlib_queue.Queue()
 
     # ── Connection ──────────────────────────────────────────────────────────
 
@@ -86,8 +89,16 @@ class MicrosoftProvider(EmailProvider):
             flow = app.initiate_device_flow(scopes=config.MICROSOFT_SCOPES)
             if "user_code" not in flow:
                 raise RuntimeError(f"Failed to create device flow: {flow}")
-            print("\n" + flow["message"])   # printed to console intentionally
+            print("\n" + flow["message"])  # also print to console as fallback
+            # Signal the async caller so it can forward the message to the UI
+            self.auth_queue.put({
+                "type": "auth_required",
+                "message": flow["message"],
+                "user_code": flow["user_code"],
+                "verification_uri": flow.get("verification_uri", "https://microsoft.com/devicelogin"),
+            })
             result = app.acquire_token_by_device_flow(flow)
+            self.auth_queue.put({"type": "auth_done"})
 
         if "access_token" not in result:
             raise RuntimeError(f"Token acquisition failed: {result.get('error_description')}")
@@ -224,8 +235,9 @@ class MicrosoftProvider(EmailProvider):
 
     async def delete_emails(self, message_ids: list[str], progress_cb=None) -> int:
         """
-        Uses Graph batch API (max 20 requests per batch call).
-        Each request permanently deletes one message.
+        Moves messages to the Deleted Items folder via Graph $batch API.
+        Safer than DELETE: messages stay recoverable for 30 days.
+        Max 20 requests per $batch call (Graph API limit).
         """
         loop = asyncio.get_event_loop()
         deleted = 0
@@ -233,20 +245,22 @@ class MicrosoftProvider(EmailProvider):
 
         for i in range(0, len(message_ids), batch_size):
             chunk = message_ids[i : i + batch_size]
-            count = await loop.run_in_executor(None, self._batch_delete, chunk)
+            count = await loop.run_in_executor(None, self._batch_move_to_deleted, chunk)
             deleted += count
             if progress_cb:
                 await progress_cb(min(i + batch_size, len(message_ids)), len(message_ids))
 
         return deleted
 
-    def _batch_delete(self, message_ids: list[str]) -> int:
-        """Send one Graph $batch request to delete up to 20 messages."""
+    def _batch_move_to_deleted(self, message_ids: list[str]) -> int:
+        """Move up to 20 messages to Deleted Items via one Graph $batch call."""
         requests_body = [
             {
                 "id": str(idx),
-                "method": "DELETE",
-                "url": f"/me/messages/{msg_id}",
+                "method": "POST",
+                "url": f"/me/messages/{msg_id}/move",
+                "headers": {"Content-Type": "application/json"},
+                "body": {"destinationId": "deleteditems"},
             }
             for idx, msg_id in enumerate(message_ids)
         ]
@@ -256,10 +270,10 @@ class MicrosoftProvider(EmailProvider):
         )
         resp.raise_for_status()
         responses = resp.json().get("responses", [])
-        ok = sum(1 for r in responses if r.get("status") in (200, 204))
+        ok = sum(1 for r in responses if r.get("status") in (200, 201))
         failed = len(responses) - ok
         if failed:
-            logger.warning("%d deletes failed in batch", failed)
+            logger.warning("%d moves failed in batch", failed)
         return ok
 
     # ── get_preview ─────────────────────────────────────────────────────────

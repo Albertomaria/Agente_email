@@ -9,5 +9,16 @@
     "imap_use_ssl": true,
     "imap_username": null,
     "created_at": "2026-04-29T08:59:27.314618"
+  },
+  {
+    "id": "microsoft_sabrina.tamburini_5699de",
+    "display_name": "Outlook Sabri",
+    "email": "sabrina.tamburini@outlook.it",
+    "provider_type": "microsoft",
+    "imap_host": null,
+    "imap_port": 993,
+    "imap_use_ssl": true,
+    "imap_username": null,
+    "created_at": "2026-05-05T08:01:30.466785"
   }
 ]

@@ -4,6 +4,9 @@ All paths, scopes, and defaults are defined here.
 """
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
 
 # ─── Base paths ───────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -38,7 +41,6 @@ MICROSOFT_TENANT_ID = os.getenv("MICROSOFT_TENANT_ID", "consumers")  # 'consumer
 MICROSOFT_SCOPES = [
     "https://graph.microsoft.com/Mail.Read",
     "https://graph.microsoft.com/Mail.ReadWrite",
-    "offline_access",
 ]
 MICROSOFT_TOKEN_DIR = TOKENS_DIR / "microsoft"
 MICROSOFT_TOKEN_DIR.mkdir(parents=True, exist_ok=True)

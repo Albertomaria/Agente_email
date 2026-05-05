@@ -15,6 +15,7 @@ from typing import AsyncIterator
 
 from models import AccountConfig, AnalysisResult, ProgressEvent
 from providers import get_provider
+from models import ProviderType
 from storage.database import Database
 from utils.logger import get_logger
 
@@ -41,7 +42,31 @@ class AnalyzePhase:
 
         try:
             yield ProgressEvent(type="progress", message="Connecting to email provider…")
-            await provider.connect()
+
+            # For Microsoft accounts, connect() may block on device-flow auth.
+            # We run it in a task and poll the provider's auth_queue so we can
+            # forward the login URL to the browser UI in real time.
+            if self.account.provider_type == ProviderType.MICROSOFT:
+                connect_task = asyncio.create_task(provider.connect())
+                while not connect_task.done():
+                    await asyncio.sleep(0.5)
+                    try:
+                        msg = provider.auth_queue.get_nowait()
+                        if msg.get("type") == "auth_required":
+                            yield ProgressEvent(
+                                type="auth_required",
+                                message=(
+                                    f"🔐 Accesso Microsoft richiesto.\n"
+                                    f"Apri: {msg['verification_uri']}\n"
+                                    f"Inserisci il codice: {msg['user_code']}"
+                                ),
+                                data=msg,
+                            )
+                    except Exception:
+                        pass
+                await connect_task  # raise any exception
+            else:
+                await provider.connect()
             yield ProgressEvent(type="progress", message="Connected. Fetching sender list…")
 
             total_emails = 0
